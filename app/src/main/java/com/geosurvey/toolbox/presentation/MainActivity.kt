@@ -1113,9 +1113,16 @@ fun TrackFullscreenContent(
     isTracking: Boolean,
     uiState: LocationUiState
 ) {
+    val isNavigating by viewModel.isNavigating.collectAsState()
+    val navigationTarget by viewModel.navigationTarget.collectAsState()
+    val navigationDistance by viewModel.navigationDistance.collectAsState()
+    val navigationBearing by viewModel.navigationBearing.collectAsState()
+    val currentLocation by viewModel.currentLocation.collectAsState()
+
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
+        // ===== 上半屏：实时轨迹 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1172,6 +1179,33 @@ fun TrackFullscreenContent(
                             Text("${String.format("%.1f", elevations.maxOrNull() ?: 0.0)}m", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF9800))
                             Text("最高海拔", fontSize = 11.sp, color = Color(0xFF64748B))
                         }
+                    }
+
+                    // 导航状态显示
+                    if (isNavigating && navigationTarget != null) {
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("🧭", fontSize = 24.sp)
+                                Text("导航中", fontSize = 11.sp, color = Color(0xFF0EA5E9))
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${String.format("%.0f", navigationDistance)}m", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B))
+                                Text("目标距离", fontSize = 11.sp, color = Color(0xFF64748B))
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${String.format("%.0f", navigationBearing)}°", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6))
+                                Text("方位角", fontSize = 11.sp, color = Color(0xFF64748B))
+                            }
+                        }
+                        Text(
+                            "目标: ${String.format("%.4f", navigationTarget!!.latitude)}, ${String.format("%.4f", navigationTarget!!.longitude)}",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1240,6 +1274,7 @@ fun TrackFullscreenContent(
         
         Spacer(modifier = Modifier.height(8.dp))
         
+        // ===== 下半屏：轨迹导航 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1252,7 +1287,12 @@ fun TrackFullscreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxSize()
             ) {
-                Text("🧭 轨迹导航", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                Text(
+                    "🧭 轨迹导航",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -1284,29 +1324,59 @@ fun TrackFullscreenContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = { /* 选择轨迹功能 */ },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("📂 选择轨迹", fontSize = 13.sp)
-                        }
                         Button(
-                            onClick = { /* 开始导航功能 */ },
+                            onClick = {
+                                if (tracks.isNotEmpty()) {
+                                    val target = tracks.last()
+                                    viewModel.setNavigationTarget(target)
+                                }
+                            },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF10B981)
+                                containerColor = if (isNavigating) Color(0xFFF59E0B) else Color(0xFF0EA5E9)
                             )
                         ) {
-                            Text("▶ 开始导航", fontSize = 13.sp)
+                            Text(
+                                if (isNavigating) "📍 导航中" else "🎯 设为目标",
+                                fontSize = 13.sp
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.setNavigationTarget(null)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFEF4444)
+                            ),
+                            enabled = isNavigating
+                        ) {
+                            Text("⏹ 取消", fontSize = 13.sp)
                         }
                     }
                     
-                    Text(
-                        "功能开发中...",
-                        fontSize = 12.sp,
-                        color = Color(0xFF94A3B8),
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    if (isNavigating && navigationTarget != null) {
+                        Text(
+                            "🎯 目标已锁定，距离 ${String.format("%.0f", navigationDistance)}m",
+                            fontSize = 12.sp,
+                            color = Color(0xFF10B981),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        if (currentLocation != null && navigationDistance < 10) {
+                            Text(
+                                "✅ 已到达目标!",
+                                fontSize = 14.sp,
+                                color = Color(0xFF4CAF50),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Text(
+                            "选择轨迹终点作为导航目标",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
                 } else {
                     Text(
                         "请先记录轨迹数据",

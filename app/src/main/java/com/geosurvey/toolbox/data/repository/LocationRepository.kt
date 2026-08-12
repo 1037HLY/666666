@@ -28,6 +28,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.*
 import java.util.Locale
 
 /**
@@ -286,17 +287,7 @@ class LocationRepository(
      */
     private fun startNativeGpsUpdates() {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // Android 7.0+ 使用GnssLocationRequest
-                val request = android.location.GnssRequest.Builder()
-                    .setIntervalMillis(1000)
-                    .setLowPowerMode(false)
-                    .build()
-                // 注意：GnssRequest需要注册GnssLocationListener
-                // 但为了兼容性，我们使用LocationManager的requestLocationUpdates
-            }
-            
-            // 使用LocationManager请求GPS更新 (更直接的GPS访问)
+            // 使用LocationManager请求GPS更新
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
@@ -518,9 +509,6 @@ class LocationRepository(
                 // ========== 3. 运动模式判断 ==========
                 val speed = location.speed
                 isMoving = speed > SPEED_THRESHOLD_MOVING
-                
-                // 更新采样频率 - 运动中高频，静止时低频
-                // 通过LocationRequest的setMinUpdateIntervalMillis控制
 
                 // ========== 4. 静止漂移过滤 ==========
                 previousLocation?.let { prev ->
@@ -531,7 +519,6 @@ class LocationRepository(
                     
                     // 静止状态下的小范围跳动过滤
                     if (!isMoving && distance < 2.0) {
-                        // 静止且移动距离小于2米，认为是漂移，使用上一个位置
                         Log.d(TAG, "静止防抖: 距离=${String.format("%.1f", distance)}m, 使用上一个位置")
                         return@launch
                     }
@@ -552,7 +539,6 @@ class LocationRepository(
                     hasGpsFix = true
                     lastGpsTime = location.time
                 } else if (hasGpsFix && System.currentTimeMillis() - lastGpsTime < 10000) {
-                    // 如果有有效的GPS定位且未过期，忽略非GPS定位
                     Log.d(TAG, "GPS有效，忽略Fused/网络定位")
                     return@launch
                 }
@@ -650,11 +636,10 @@ class LocationRepository(
 
     /**
      * EGM2008高程校正 (简化版)
-     * 实际应使用EGM2008网格数据，这里用经纬度简化模拟
+     * 实际应使用EGM2008网格数据
      */
     private fun getEGMOffset(lat: Double, lng: Double): Double {
         // 简化模拟：中国地区EGM校正值大约在-20m到+20m之间
-        // 实际项目应使用EGM2008模型数据
         return -30.0 + (lat - 20) * 0.5 + (lng - 100) * 0.2
     }
 

@@ -2,6 +2,7 @@ package com.geosurvey.toolbox.domain.util
 
 import com.geosurvey.toolbox.domain.model.LocationData
 import com.geosurvey.toolbox.domain.model.LocationQuality
+import kotlin.math.*
 
 /**
  * 定位质量评估器
@@ -19,15 +20,15 @@ object LocationQualityEvaluator {
         // 综合评估
         return when {
             // 优秀：高清卫星数 + 低HDOP + 高精度
-            satelliteCount >= 8 && hdop < 2 && accuracy < 5 -> LocationQuality.EXCELLENT
+            satelliteCount >= 8 && hdop < 2f && accuracy < 5f -> LocationQuality.EXCELLENT
             // 良好
-            satelliteCount >= 6 && hdop < 4 && accuracy < 10 -> LocationQuality.GOOD
+            satelliteCount >= 6 && hdop < 4f && accuracy < 10f -> LocationQuality.GOOD
             // 一般
-            satelliteCount >= 4 && hdop < 8 && accuracy < 20 -> LocationQuality.FAIR
+            satelliteCount >= 4 && hdop < 8f && accuracy < 20f -> LocationQuality.FAIR
             // 较差
-            satelliteCount >= 2 && hdop < 12 -> LocationQuality.POOR
+            satelliteCount >= 2 && hdop < 12f -> LocationQuality.POOR
             // 很差
-            satelliteCount < 2 || hdop >= 12 -> LocationQuality.BAD
+            satelliteCount < 2 || hdop >= 12f -> LocationQuality.BAD
             // 默认
             else -> LocationQuality.UNKNOWN
         }
@@ -89,10 +90,10 @@ object LocationQualityEvaluator {
         val R = 6371000.0 // 地球半径（米）
         val dLat = Math.toRadians(lat2 - lat1)
         val dLng = Math.toRadians(lng2 - lng1)
-        val a = Math.sin(dLat / 2).pow(2.0) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                Math.sin(dLng / 2).pow(2.0)
-        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        val a = sin(dLat / 2).pow(2.0) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLng / 2).pow(2.0)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
     }
 
@@ -113,7 +114,7 @@ object LocationQualityEvaluator {
             location.latitude,
             location.longitude
         )
-        return distance < threshold && location.speed < 0.5
+        return distance < threshold && location.speed < 0.5f
     }
 
     /**

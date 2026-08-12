@@ -42,6 +42,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.geosurvey.toolbox.R
 import com.geosurvey.toolbox.domain.model.Constellation
+import com.geosurvey.toolbox.domain.model.LocationQuality
 import com.geosurvey.toolbox.presentation.viewmodel.LocationViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -119,7 +120,6 @@ fun MainScreen(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: Screen.Home.route
 
-    // 全屏对话框状态
     var fullscreenContent by remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
 
     Scaffold(
@@ -171,7 +171,6 @@ fun MainScreen(
         }
     }
 
-    // 全屏对话框
     fullscreenContent?.let { content ->
         Dialog(
             onDismissRequest = { fullscreenContent = null },
@@ -185,7 +184,6 @@ fun MainScreen(
                     .fillMaxSize()
                     .background(Color(0xFFF0F4F8))
             ) {
-                // 关闭按钮
                 IconButton(
                     onClick = { fullscreenContent = null },
                     modifier = Modifier
@@ -196,7 +194,6 @@ fun MainScreen(
                     Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color(0xFF1E293B))
                 }
 
-                // 全屏内容
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -833,11 +830,11 @@ fun GPSFullscreenContent(
                 text = "质量: ${uiState.qualityText}",
                 fontSize = 16.sp,
                 color = when (uiState.quality) {
-                    com.geosurvey.toolbox.domain.model.LocationQuality.EXCELLENT -> Color(0xFF4CAF50)
-                    com.geosurvey.toolbox.domain.model.LocationQuality.GOOD -> Color(0xFF8BC34A)
-                    com.geosurvey.toolbox.domain.model.LocationQuality.FAIR -> Color(0xFFFFC107)
-                    com.geosurvey.toolbox.domain.model.LocationQuality.POOR -> Color(0xFFFF9800)
-                    com.geosurvey.toolbox.domain.model.LocationQuality.BAD -> Color(0xFFF44336)
+                    LocationQuality.EXCELLENT -> Color(0xFF4CAF50)
+                    LocationQuality.GOOD -> Color(0xFF8BC34A)
+                    LocationQuality.FAIR -> Color(0xFFFFC107)
+                    LocationQuality.POOR -> Color(0xFFFF9800)
+                    LocationQuality.BAD -> Color(0xFFF44336)
                     else -> Color.Gray
                 }
             )

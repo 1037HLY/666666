@@ -258,9 +258,9 @@ fun SatellitePolarChart(
 
         // 绘制十字线
         for (i in 0..3) {
-            val angle = i.toDouble() * PI / 2.0
-            val endX = centerX + radius * cos(angle).toFloat()
-            val endY = centerY + radius * sin(angle).toFloat()
+            val angle = i.toFloat() * PI.toFloat() / 2f
+            val endX = centerX + radius * cos(angle)
+            val endY = centerY + radius * sin(angle)
             drawLine(
                 color = Color(0xFF64748B).copy(alpha = 0.2f),
                 start = Offset(centerX, centerY),
@@ -272,10 +272,10 @@ fun SatellitePolarChart(
         // 绘制方向标签
         val labels = listOf("N", "E", "S", "W")
         for (i in labels.indices) {
-            val angle = i.toDouble() * PI / 2.0 - PI / 2.0
+            val angle = i.toFloat() * PI.toFloat() / 2f - PI.toFloat() / 2f
             val labelRadius = radius + 16f
-            val labelX = centerX + labelRadius * cos(angle).toFloat()
-            val labelY = centerY + labelRadius * sin(angle).toFloat()
+            val labelX = centerX + labelRadius * cos(angle)
+            val labelY = centerY + labelRadius * sin(angle)
             drawContext.canvas.nativeCanvas.apply {
                 val paint = android.graphics.Paint().apply {
                     color = android.graphics.Color.parseColor("#64748B")
@@ -291,13 +291,13 @@ fun SatellitePolarChart(
             val elevation = satellite.elevation
             val azimuth = satellite.azimuth
 
-            val elevationRad = (elevation.toDouble() / 90.0).coerceIn(0.0, 1.0)
+            val elevationRad = (elevation / 90f).coerceIn(0f, 1f)
             val r = radius * elevationRad
 
-            val angleRad = Math.toRadians(azimuth.toDouble()) - PI / 2.0
+            val angleRad = Math.toRadians(azimuth.toDouble()).toFloat() - PI.toFloat() / 2f
 
-            val x = centerX + r * cos(angleRad).toFloat()
-            val y = centerY + r * sin(angleRad).toFloat()
+            val x = centerX + r * cos(angleRad)
+            val y = centerY + r * sin(angleRad)
 
             val color = when (satellite.constellation) {
                 Constellation.GPS -> Color(0xFF4CAF50)

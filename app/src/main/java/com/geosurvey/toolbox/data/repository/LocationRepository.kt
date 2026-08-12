@@ -25,7 +25,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.Date
 
 /**
  * 定位数据仓库
@@ -64,14 +63,15 @@ class LocationRepository(
     private val _trackPoints = MutableStateFlow<List<TrackEntity>>(emptyList())
     val trackPoints: StateFlow<List<TrackEntity>> = _trackPoints.asStateFlow()
 
+    // 地点名称
+    private val _locationName = MutableStateFlow<String>("正在获取地址...")
+    val locationName: StateFlow<String> = _locationName.asStateFlow()
+
     private var previousLocation: LocationData? = null
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var locationCallback: LocationCallback? = null
     private var isRunning = false
     private var isStationary = false
-
-    // 用于模拟定位的计数器
-    private var mockCounter = 0
 
     /**
      * 开始定位
@@ -93,10 +93,7 @@ class LocationRepository(
         // 检查GPS是否开启
         val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
         val isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-        val isPassiveEnabled = locationManager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)
-        Log.d(TAG, "GPS enabled: $isGpsEnabled")
-        Log.d(TAG, "Network enabled: $isNetworkEnabled")
-        Log.d(TAG, "Passive enabled: $isPassiveEnabled")
+        Log.d(TAG, "GPS enabled: $isGpsEnabled, Network enabled: $isNetworkEnabled")
         
         if (!isGpsEnabled && !isNetworkEnabled) {
             Log.e(TAG, "❌ No location provider enabled")
@@ -138,11 +135,8 @@ class LocationRepository(
             
             Log.d(TAG, "Location updates requested successfully")
             
-            // 获取最后一次已知位置作为快速反馈
+            // 获取最后一次已知位置
             getLastKnownLocation()
-            
-            // 启动模拟定位作为备用方案（如果真实定位长时间无法获取）
-            startMockLocationUpdates()
             
         } catch (e: SecurityException) {
             Log.e(TAG, "❌ SecurityException when requesting location updates", e)
@@ -176,55 +170,6 @@ class LocationRepository(
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException getting last known location", e)
-        }
-    }
-
-    /**
-     * 模拟定位（作为备用方案，帮助测试UI）
-     */
-    private fun startMockLocationUpdates() {
-        repositoryScope.launch {
-            Log.d(TAG, "Starting mock location updates (备用方案)")
-            
-            // 如果5秒后还没有真实定位，开始模拟
-            delay(5000)
-            
-            // 检查是否已经有真实定位
-            if (_currentLocation.value != null) {
-                Log.d(TAG, "Real location already available, skipping mock")
-                return@launch
-            }
-            
-            Log.d(TAG, "No real location after 5s, starting mock location")
-            
-            // 模拟位置：北京天安门附近
-            val mockLocations = listOf(
-                Pair(39.9042, 116.4074), // 天安门
-                Pair(39.9050, 116.4080),
-                Pair(39.9060, 116.4090),
-                Pair(39.9070, 116.4100),
-                Pair(39.9080, 116.4110)
-            )
-            
-            var index = 0
-            while (isRunning && _currentLocation.value == null) {
-                val (lat, lng) = mockLocations[index % mockLocations.size]
-                val mockLocation = Location("mock").apply {
-                    this.latitude = lat + (Math.random() - 0.5) * 0.001
-                    this.longitude = lng + (Math.random() - 0.5) * 0.001
-                    this.altitude = 50.0 + Math.random() * 10
-                    this.accuracy = 5.0f + (Math.random() * 5).toFloat()
-                    this.speed = 0.0f
-                    this.bearing = 0.0f
-                    this.time = System.currentTimeMillis()
-                }
-                Log.d(TAG, "📌 Mock location: lat=${mockLocation.latitude}, lng=${mockLocation.longitude}")
-                handleNewLocation(mockLocation)
-                index++
-                delay(3000)
-            }
-            
-            Log.d(TAG, "Mock location stopped (real location available or service stopped)")
         }
     }
 
@@ -303,16 +248,11 @@ class LocationRepository(
                 val quality = LocationQualityEvaluator.evaluate(rawLocation)
                 Log.d(TAG, "Location quality: $quality")
 
-                // 即使是低质量定位，也先显示出来（用于测试）
-                if (quality == LocationQuality.BAD) {
-                    Log.d(TAG, "Location quality is BAD, but still displaying for testing")
-                    // 仍然显示这个定位，方便调试
-                }
-
                 // 漂移检测
                 previousLocation?.let { prev ->
                     if (LocationQualityEvaluator.isDriftDetected(prev, rawLocation)) {
-                        Log.d(TAG, "Drift detected, but still using location")
+                        Log.d(TAG, "Drift detected, skipping location")
+                        return@launch
                     }
                 }
 
@@ -320,6 +260,10 @@ class LocationRepository(
                 previousLocation?.let { prev ->
                     if (LocationQualityEvaluator.isStationary(rawLocation, prev)) {
                         isStationary = true
+                        if (_isTracking.value) {
+                            previousLocation = rawLocation
+                            return@launch
+                        }
                     } else {
                         isStationary = false
                     }
@@ -340,6 +284,9 @@ class LocationRepository(
                 _currentLocation.value = filteredLocation
                 Log.d(TAG, "✅ Current location updated: lat=$filteredLat, lng=$filteredLng")
                 
+                // 获取地点名称
+                fetchLocationName(filteredLat, filteredLng)
+                
                 // 保存到数据库
                 saveLocationToDatabase(filteredLocation)
 
@@ -352,6 +299,66 @@ class LocationRepository(
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling location", e)
             }
+        }
+    }
+
+    /**
+     * 获取地点名称（反向地理编码）
+     */
+    private fun fetchLocationName(lat: Double, lng: Double) {
+        try {
+            val geocoder = android.location.Geocoder(context)
+            val addresses = geocoder.getFromLocation(lat, lng, 1)
+            if (addresses != null && addresses.isNotEmpty()) {
+                val address = addresses[0]
+                val name = buildString {
+                    // 获取地址的各部分
+                    val locality = address.locality ?: ""
+                    val subLocality = address.subLocality ?: ""
+                    val thoroughfare = address.thoroughfare ?: ""
+                    val featureName = address.featureName ?: ""
+                    val adminArea = address.adminArea ?: ""
+                    val countryName = address.countryName ?: ""
+                    
+                    // 构建地址字符串
+                    if (featureName.isNotEmpty()) {
+                        append(featureName)
+                    }
+                    if (thoroughfare.isNotEmpty()) {
+                        if (isNotEmpty()) append(" ")
+                        append(thoroughfare)
+                    }
+                    if (subLocality.isNotEmpty()) {
+                        if (isNotEmpty()) append(", ")
+                        append(subLocality)
+                    }
+                    if (locality.isNotEmpty()) {
+                        if (isNotEmpty()) append(", ")
+                        append(locality)
+                    }
+                    if (adminArea.isNotEmpty() && locality != adminArea) {
+                        if (isNotEmpty()) append(", ")
+                        append(adminArea)
+                    }
+                    if (countryName.isNotEmpty()) {
+                        if (isNotEmpty()) append(", ")
+                        append(countryName)
+                    }
+                    
+                    // 如果地址为空，显示坐标
+                    if (isEmpty()) {
+                        append("未知地址 (${String.format("%.4f", lat)}, ${String.format("%.4f", lng)})")
+                    }
+                }
+                _locationName.value = name
+                Log.d(TAG, "📍 Location name: $name")
+            } else {
+                _locationName.value = "无法获取地址"
+                Log.d(TAG, "No address found for location")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching location name", e)
+            _locationName.value = "地址获取失败"
         }
     }
 
@@ -444,7 +451,7 @@ class LocationRepository(
     private fun createLocationRequest(): com.google.android.gms.location.LocationRequest {
         return com.google.android.gms.location.LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            1000 // 1秒更新一次
+            1000
         )
             .setMinUpdateDistanceMeters(0.5f)
             .setMinUpdateIntervalMillis(1000)
@@ -471,28 +478,10 @@ class LocationRepository(
     }
 
     /**
-     * 手动触发一次位置更新（用于测试）
+     * 手动触发一次位置更新
      */
     fun forceLocationUpdate() {
         Log.d(TAG, "forceLocationUpdate() called")
         getLastKnownLocation()
-        
-        // 如果5秒后还没有定位，启动模拟定位
-        repositoryScope.launch {
-            delay(3000)
-            if (_currentLocation.value == null) {
-                Log.d(TAG, "Still no location, using test location")
-                val testLocation = Location("test").apply {
-                    latitude = 39.9042
-                    longitude = 116.4074
-                    altitude = 50.0
-                    accuracy = 10.0f
-                    speed = 0.0f
-                    bearing = 0.0f
-                    time = System.currentTimeMillis()
-                }
-                handleNewLocation(testLocation)
-            }
-        }
     }
 }

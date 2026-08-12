@@ -755,7 +755,6 @@ fun HomeScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // 轨迹状态
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -782,7 +781,6 @@ fun HomeScreen(
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 
-                // 海拔曲线
                 ElevationChart(
                     tracks = tracks.takeLast(50),
                     modifier = Modifier.weight(1f)
@@ -837,7 +835,6 @@ fun GPSFullscreenContent(
                 }
             }
         } else if (location != null) {
-            // 卫星统计
             val gpsCount = satellites.count { it.constellation == Constellation.GPS }
             val glonassCount = satellites.count { it.constellation == Constellation.GLONASS }
             val galileoCount = satellites.count { it.constellation == Constellation.GALILEO }
@@ -845,7 +842,6 @@ fun GPSFullscreenContent(
             val usedCount = satellites.count { it.usedInFix }
             val avgSnr = if (satellites.isNotEmpty()) satellites.map { it.snr }.average().toFloat() else 0f
 
-            // 地址信息
             Text(
                 "📍 当前位置",
                 fontSize = 18.sp,
@@ -876,7 +872,6 @@ fun GPSFullscreenContent(
                 }
             }
 
-            // 坐标信息
             Text("📍 坐标信息", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -891,7 +886,6 @@ fun GPSFullscreenContent(
                 }
             }
 
-            // 精度与速度
             Text("📊 精度与速度", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -907,7 +901,6 @@ fun GPSFullscreenContent(
                 }
             }
 
-            // 卫星信息
             Text("🛰️ 卫星信息", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6))
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -922,7 +915,6 @@ fun GPSFullscreenContent(
                 }
             }
 
-            // 操作按钮
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1001,7 +993,6 @@ fun SatelliteFullscreenContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // 上半屏：卫星极坐标图
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1050,7 +1041,6 @@ fun SatelliteFullscreenContent(
         
         Spacer(modifier = Modifier.height(8.dp))
         
-        // 下半屏：卫星详细信息
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1126,7 +1116,6 @@ fun TrackFullscreenContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // ===== 上半屏：实时轨迹 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1138,21 +1127,12 @@ fun TrackFullscreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxSize().padding(12.dp)
             ) {
-                // 标题行
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        "🗺️ 实时轨迹",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
-                    )
-                    // 记录状态指示器
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Text("🗺️ 实时轨迹", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
@@ -1173,7 +1153,6 @@ fun TrackFullscreenContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 if (tracks.isNotEmpty()) {
-                    // 轨迹统计信息
                     val distance = calculateDistance(tracks)
                     val elevations = tracks.map { it.altitude }
                     
@@ -1197,7 +1176,6 @@ fun TrackFullscreenContent(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 简化轨迹图
                     Canvas(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1211,7 +1189,6 @@ fun TrackFullscreenContent(
                             val minElev = points.minOf { it.altitude }
                             val range = if (maxElev - minElev > 0) maxElev - minElev else 1.0
                             
-                            // 绘制轨迹线
                             val path = Path()
                             points.forEachIndexed { index, point ->
                                 val x = padding + step * index
@@ -1228,7 +1205,6 @@ fun TrackFullscreenContent(
                                 style = Stroke(width = 3f)
                             )
                             
-                            // 绘制起点和终点
                             val first = points.first()
                             val last = points.last()
                             val firstX = padding
@@ -1249,7 +1225,6 @@ fun TrackFullscreenContent(
                         }
                     }
                 } else {
-                    // 无轨迹数据
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
@@ -1265,7 +1240,6 @@ fun TrackFullscreenContent(
         
         Spacer(modifier = Modifier.height(8.dp))
         
-        // ===== 下半屏：轨迹导航 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1278,17 +1252,11 @@ fun TrackFullscreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxSize()
             ) {
-                Text(
-                    "🧭 轨迹导航",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E293B)
-                )
+                Text("🧭 轨迹导航", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 if (tracks.isNotEmpty()) {
-                    // 显示当前轨迹信息
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.7f)),
@@ -1312,7 +1280,6 @@ fun TrackFullscreenContent(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 导航控制按钮
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1353,7 +1320,6 @@ fun TrackFullscreenContent(
                     )
                 }
                 
-                // 底部操作提示
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     "点击外部关闭",
@@ -1385,8 +1351,227 @@ private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): D
     return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 }
 
-// --- 13-16. 其他页面 (AnalysisScreen, RecordScreen, CameraScreen, Preview) ---
-// 这些页面保持不变，省略部分代码以节省空间
-// 实际使用时需要包含完整的 AnalysisScreen, RecordScreen, CameraScreen
+// --- 13. AnalysisScreen ---
+@Composable
+fun AnalysisScreen(
+    state: AnalysisScreenState,
+    showFullscreen: (@Composable () -> Unit) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        SmallWindowCard(
+            title = "产状测量",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("📐 产状测量", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Text("倾向: 0°", fontSize = 18.sp)
+                        Text("倾角: 0°", fontSize = 18.sp)
+                        Text("走向: 0°", fontSize = 18.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = {}) { Text("📝 记录产状", fontSize = 16.sp) }
+                    }
+                }
+            }
+        ) {
+            Text("倾向: 0° 倾角: 0°", fontSize = 14.sp, color = Color(0xFF64748B))
+        }
+        
+        SmallWindowCard(
+            title = "赤平投影 & 玫瑰花图",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column {
+                        Text("📊 赤平投影 & 玫瑰花图", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) { Text("🔴 赤平投影", fontSize = 18.sp) }
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) { Text("🌹 玫瑰花图", fontSize = 18.sp) }
+                    }
+                }
+            }
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Text("🔴 赤平投影", fontSize = 13.sp, color = Color(0xFF64748B))
+                Text("🌹 玫瑰花图", fontSize = 13.sp, color = Color(0xFF64748B))
+            }
+        }
+        
+        SmallWindowCard(
+            title = "钻孔计算 & 绘制",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column {
+                        Text("🕳️ 钻孔计算 & 绘制", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("📐 钻孔计算", fontSize = 18.sp)
+                                Text("输入钻孔参数进行计算", fontSize = 14.sp, color = Color.Gray)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("📊 钻孔绘制", fontSize = 18.sp)
+                                Text("显示钻孔柱状图", fontSize = 14.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+            }
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Text("📐 钻孔计算", fontSize = 13.sp, color = Color(0xFF64748B))
+                Text("📊 钻孔绘制", fontSize = 13.sp, color = Color(0xFF64748B))
+            }
+        }
+    }
+}
 
-// 注意：由于代码太长，AnalysisScreen、RecordScreen、CameraScreen 保持之前的实现
+// --- 14. RecordScreen ---
+@Composable
+fun RecordScreen(
+    state: RecordScreenState,
+    showFullscreen: (@Composable () -> Unit) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        SmallWindowCard(
+            title = "普通样本",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column {
+                        Text("📋 普通样本", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Text("共 0 个样本", fontSize = 16.sp, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("暂无样本数据", fontSize = 14.sp, color = Color.Gray)
+                    }
+                }
+            }
+        ) {
+            Text("📋 共 0 个样本", fontSize = 14.sp, color = Color(0xFF64748B))
+        }
+        
+        SmallWindowCard(
+            title = "钻孔样本",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column {
+                        Text("🕳️ 钻孔样本", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Text("共 0 个钻孔", fontSize = 16.sp, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("暂无钻孔数据", fontSize = 14.sp, color = Color.Gray)
+                    }
+                }
+            }
+        ) {
+            Text("🕳️ 共 0 个钻孔", fontSize = 14.sp, color = Color(0xFF64748B))
+        }
+    }
+}
+
+// --- 15. CameraScreen ---
+@Composable
+fun CameraScreen(
+    state: CameraScreenState,
+    showFullscreen: (@Composable () -> Unit) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        SmallWindowCard(
+            title = "水印相机",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column {
+                        Text("📷 水印相机", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Text("相机预览", fontSize = 16.sp, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("水印设置: 坐标 | 时间 | 地点", fontSize = 14.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = {}) { Text("📸 拍照", fontSize = 16.sp) }
+                    }
+                }
+            }
+        ) {
+            Text("📷 点击打开相机", fontSize = 14.sp, color = Color(0xFF64748B))
+        }
+        
+        SmallWindowCard(
+            title = "相册",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showFullscreen {
+                    Column {
+                        Text("🖼️ 相册", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                        Text("共 0 张照片", fontSize = 16.sp, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("暂无照片", fontSize = 14.sp, color = Color.Gray)
+                    }
+                }
+            }
+        ) {
+            Text("🖼️ 共 0 张照片", fontSize = 14.sp, color = Color(0xFF64748B))
+        }
+    }
+}
+
+// --- 16. 预览 ---
+@Preview(showBackground = true)
+@Composable
+fun PreviewMainScreen() {
+    MaterialTheme {
+        MainScreen(
+            homeState = HomeScreenState(),
+            analysisState = AnalysisScreenState(),
+            recordState = RecordScreenState(),
+            cameraState = CameraScreenState()
+        )
+    }
+}

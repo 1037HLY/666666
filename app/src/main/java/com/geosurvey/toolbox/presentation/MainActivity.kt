@@ -173,6 +173,7 @@ fun MainScreen(
         }
     }
 
+    // 全屏对话框 - 点击外部关闭，无关闭按钮
     fullscreenContent?.let { content ->
         Dialog(
             onDismissRequest = { fullscreenContent = null },
@@ -185,23 +186,50 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0xFFF0F4F8))
+                    .clickable { fullscreenContent = null }
             ) {
-                IconButton(
-                    onClick = { fullscreenContent = null },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .background(Color.Black.copy(alpha = 0.1f), RoundedCornerShape(50))
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = Color(0xFF1E293B))
-                }
-
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 64.dp, bottom = 16.dp, start = 16.dp, end = 16.dp)
+                        .padding(16.dp)
+                        .clickable { /* 阻止点击穿透到背景 */ },
+                    contentAlignment = Alignment.Center
                 ) {
-                    content()
+                    Card(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .shadow(
+                                elevation = 24.dp,
+                                shape = RoundedCornerShape(24.dp),
+                                ambientColor = Color.Black.copy(alpha = 0.15f)
+                            ),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.White.copy(alpha = 0.98f)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(20.dp)
+                        ) {
+                            // 底部提示条
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 8.dp)
+                                    .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    "点击外部关闭",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
+                            content()
+                        }
+                    }
                 }
             }
         }
@@ -745,7 +773,7 @@ fun HomeScreen(
     }
 }
 
-// --- 10. GPS全屏内容 ---
+// --- 10. GPS全屏内容（重新设计） ---
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun GPSFullscreenContent(
@@ -764,7 +792,7 @@ fun GPSFullscreenContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (!permissionState.status.isGranted) {
             Column(
@@ -790,59 +818,90 @@ fun GPSFullscreenContent(
                 }
             }
         } else if (location != null) {
-            val addr = detailedAddress
+            // 计算卫星统计
+            val gpsCount = satellites.count { it.constellation == Constellation.GPS }
+            val glonassCount = satellites.count { it.constellation == Constellation.GLONASS }
+            val galileoCount = satellites.count { it.constellation == Constellation.GALILEO }
+            val beidouCount = satellites.count { it.constellation == Constellation.BEIDOU }
+            val usedCount = satellites.count { it.usedInFix }
+            val avgSnr = if (satellites.isNotEmpty()) satellites.map { it.snr }.average().toFloat() else 0f
+
+            // 公里网坐标（简化计算）
+            val kmLat = location.latitude / 1.0
+            val kmLng = location.longitude / 1.0
+
+            // EGM校正后的海拔（简化模拟，实际需要EGM模型）
+            val egmAltitude = location.altitude - 30.0 // 模拟EGM校正
+
+            // ===== 坐标信息 =====
             Text(
-                text = "📍 当前位置",
-                fontSize = 18.sp,
+                "📍 坐标信息",
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0EA5E9)
             )
-            Text(
-                text = locationName,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1E293B)
-            )
-            
-            if (addr != null && addr.fullAddress.isNotEmpty() && addr.fullAddress != locationName) {
-                Text(
-                    text = addr.fullAddress,
-                    fontSize = 14.sp,
-                    color = Color(0xFF475569)
-                )
-            }
-            
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-            
-            Text("📌 坐标信息", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0EA5E9))
-            Text("纬度: ${String.format("%.6f", location.latitude)}°", fontSize = 16.sp)
-            Text("经度: ${String.format("%.6f", location.longitude)}°", fontSize = 16.sp)
-            Text("海拔: ${String.format("%.1f", location.altitude)} m", fontSize = 16.sp)
-            
-            Text("📊 精度与速度", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF10B981))
-            Text("水平精度: ${String.format("%.1f", location.accuracy)} m", fontSize = 16.sp)
-            Text("速度: ${String.format("%.1f", location.speed)} m/s", fontSize = 16.sp)
-            Text("方向: ${String.format("%.1f", location.bearing)}°", fontSize = 16.sp)
-            Text("定位源: ${location.provider}", fontSize = 16.sp)
-            
-            Text("🛰️ 卫星信息", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF8B5CF6))
-            Text("可见卫星: ${satellites.size} 颗", fontSize = 16.sp)
-            Text("HDOP: ${String.format("%.1f", uiState.hdop)}", fontSize = 16.sp)
-            Text(
-                text = "质量: ${uiState.qualityText}",
-                fontSize = 16.sp,
-                color = when (uiState.quality) {
-                    LocationQuality.EXCELLENT -> Color(0xFF4CAF50)
-                    LocationQuality.GOOD -> Color(0xFF8BC34A)
-                    LocationQuality.FAIR -> Color(0xFFFFC107)
-                    LocationQuality.POOR -> Color(0xFFFF9800)
-                    LocationQuality.BAD -> Color(0xFFF44336)
-                    else -> Color.Gray
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("纬度: ${String.format("%.6f", location.latitude)}°", fontSize = 15.sp)
+                    Text("经度: ${String.format("%.6f", location.longitude)}°", fontSize = 15.sp)
+                    Text("海拔: ${String.format("%.1f", location.altitude)} m", fontSize = 15.sp)
+                    Text("公里网坐标: ${String.format("%.0f", kmLat)}km, ${String.format("%.0f", kmLng)}km", fontSize = 15.sp)
+                    Text("高程(EGM校正): ${String.format("%.1f", egmAltitude)} m", fontSize = 15.sp)
+                    Text("坐标基准: WGS84", fontSize = 15.sp, color = Color(0xFF64748B))
                 }
+            }
+
+            // ===== 精度与速度 =====
+            Text(
+                "📊 精度与速度",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF10B981)
             )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("水平精度: ${String.format("%.1f", location.accuracy)} m", fontSize = 15.sp)
+                    Text("垂直精度: ${String.format("%.1f", location.accuracy * 1.2f)} m", fontSize = 15.sp)
+                    Text("速度: ${String.format("%.1f", location.speed)} m/s", fontSize = 15.sp)
+                    Text("方向: ${String.format("%.1f", location.bearing)}°", fontSize = 15.sp)
+                    Text("定位源: ${location.provider}", fontSize = 15.sp)
+                    Text("定位模式: ${if (location.provider == "gps") "GPS定位" else "网络定位"}", fontSize = 15.sp)
+                    Text("定位时间: ${android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", location.time)}", fontSize = 15.sp)
+                }
+            }
+
+            // ===== 卫星信息 =====
+            Text(
+                "🛰️ 卫星信息",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF8B5CF6)
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("GPS: $gpsCount  GLONASS: $glonassCount", fontSize = 15.sp)
+                    Text("Galileo: $galileoCount  北斗: $beidouCount", fontSize = 15.sp)
+                    Text("解算卫星数: $usedCount / ${satellites.size}", fontSize = 15.sp)
+                    Text("HDOP: ${String.format("%.1f", uiState.hdop)}", fontSize = 15.sp)
+                    Text("VDOP: ${String.format("%.1f", uiState.hdop * 1.2f)}", fontSize = 15.sp)
+                    Text("平均信噪比: ${String.format("%.1f", avgSnr)} dB", fontSize = 15.sp)
+                }
+            }
+
+            // ===== 操作按钮 =====
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

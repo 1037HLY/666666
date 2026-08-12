@@ -16,9 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/**
- * 定位ViewModel
- */
 class LocationViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "LocationViewModel"
@@ -27,34 +24,26 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     private val database = AppDatabase.getDatabase(application)
     private val locationRepository = LocationRepository(application, database.locationDao())
 
-    // UI状态
     private val _uiState = MutableStateFlow(LocationUiState())
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
 
-    // 定位数据
     val currentLocation: StateFlow<LocationData?> = locationRepository.currentLocation
     val satellites: StateFlow<List<SatelliteInfo>> = locationRepository.satellites
     val isTracking: StateFlow<Boolean> = locationRepository.isTracking
     val trackPoints = locationRepository.trackPoints
     val locationName = locationRepository.locationName
-    val detailedAddress = locationRepository.detailedAddress  // 新增：详细地址
+    val detailedAddress = locationRepository.detailedAddress
 
     init {
         Log.d(TAG, "========== LocationViewModel 初始化 ==========")
         startLocation()
     }
 
-    /**
-     * 开始定位
-     */
     fun startLocation() {
         Log.d(TAG, "开始定位")
         locationRepository.startLocationUpdates()
     }
 
-    /**
-     * 重新开始定位
-     */
     fun restartLocation() {
         Log.d(TAG, "重新开始定位")
         locationRepository.stopLocationUpdates()
@@ -66,25 +55,16 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /**
-     * 开始轨迹记录
-     */
     fun startTracking() {
         locationRepository.startTracking()
         _uiState.value = _uiState.value.copy(isRecording = true)
     }
 
-    /**
-     * 停止轨迹记录
-     */
     fun stopTracking() {
         locationRepository.stopTracking()
         _uiState.value = _uiState.value.copy(isRecording = false)
     }
 
-    /**
-     * 获取轨迹点
-     */
     fun loadTracks() {
         viewModelScope.launch {
             val tracks = locationRepository.getRecentTracks(100)
@@ -92,18 +72,12 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /**
-     * 清理资源
-     */
     override fun onCleared() {
         super.onCleared()
         locationRepository.cleanup()
     }
 }
 
-/**
- * 定位UI状态
- */
 data class LocationUiState(
     val location: LocationData? = null,
     val quality: LocationQuality = LocationQuality.UNKNOWN,

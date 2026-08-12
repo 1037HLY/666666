@@ -81,18 +81,21 @@ class LocationRepository(
     private var isStationary = false
     private var locationCount = 0
 
+    // GNSS回调（Android 7.0+）
+    private var gnssStatusCallback: android.location.GnssStatus.Callback? = null
+
     /**
      * 详细地址数据类
      */
     data class DetailedAddress(
         val fullAddress: String = "",
         val country: String = "",
-        val adminArea: String = "",      // 省份
-        val subAdminArea: String = "",   // 城市
-        val locality: String = "",       // 区/县
-        val subLocality: String = "",    // 街道
-        val thoroughfare: String = "",   // 道路
-        val featureName: String = "",    // 地标
+        val adminArea: String = "",
+        val subAdminArea: String = "",
+        val locality: String = "",
+        val subLocality: String = "",
+        val thoroughfare: String = "",
+        val featureName: String = "",
         val postalCode: String = ""
     )
 
@@ -183,12 +186,12 @@ class LocationRepository(
      */
     private fun createHighAccuracyLocationRequest(): LocationRequest {
         return LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,  // 最高精度
-            1000  // 1秒更新一次
+            Priority.PRIORITY_HIGH_ACCURACY,
+            1000
         )
-            .setMinUpdateDistanceMeters(0.5f)   // 移动0.5米更新
-            .setMinUpdateIntervalMillis(500)    // 最小更新间隔500ms
-            .setMaxUpdateDelayMillis(2000)      // 最大延迟2秒
+            .setMinUpdateDistanceMeters(0.5f)
+            .setMinUpdateIntervalMillis(500)
+            .setMaxUpdateDelayMillis(2000)
             .build()
     }
 
@@ -215,6 +218,7 @@ class LocationRepository(
                         Log.d(TAG, "⏹ GNSS定位停止")
                     }
                 }
+                gnssStatusCallback = callback
                 locationManager.registerGnssStatusCallback(callback, null)
                 Log.d(TAG, "✅ GNSS状态监听已注册")
             } catch (e: SecurityException) {
@@ -310,28 +314,14 @@ class LocationRepository(
         // 取消GNSS回调
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             try {
-                locationManager.unregisterGnssStatusCallback(gnssStatusCallback)
+                gnssStatusCallback?.let { callback ->
+                    locationManager.unregisterGnssStatusCallback(callback)
+                }
             } catch (e: Exception) {
                 // ignore
             }
         }
-    }
-
-    // GNSS回调引用
-    private var gnssStatusCallback: android.location.GnssStatus.Callback? = null
-
-    init {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            gnssStatusCallback = object : android.location.GnssStatus.Callback() {
-                override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
-                    updateSatelliteInfo(status)
-                }
-                
-                override fun onFirstFix(ttffMillis: Int) {
-                    Log.d(TAG, "✅ 首次定位成功! 耗时: ${ttffMillis}ms")
-                }
-            }
-        }
+        gnssStatusCallback = null
     }
 
     /**
@@ -472,12 +462,12 @@ class LocationRepository(
                 // 构建完整地址
                 val fullAddress = address.getAddressLine(0) ?: ""
                 val country = address.countryName ?: ""
-                val adminArea = address.adminArea ?: ""        // 省份
-                val subAdminArea = address.subAdminArea ?: ""  // 城市
-                val locality = address.locality ?: ""          // 区/县
-                val subLocality = address.subLocality ?: ""    // 街道
-                val thoroughfare = address.thoroughfare ?: ""  // 道路
-                val featureName = address.featureName ?: ""    // 地标
+                val adminArea = address.adminArea ?: ""
+                val subAdminArea = address.subAdminArea ?: ""
+                val locality = address.locality ?: ""
+                val subLocality = address.subLocality ?: ""
+                val thoroughfare = address.thoroughfare ?: ""
+                val featureName = address.featureName ?: ""
                 val postalCode = address.postalCode ?: ""
                 
                 // 构建显示名称

@@ -236,9 +236,9 @@ fun SatellitePolarChart(
             .fillMaxSize()
             .padding(8.dp)
     ) {
-        val centerX = size.width / 2
-        val centerY = size.height / 2
-        val radius = min(size.width, size.height) / 2 - 20
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val radius = min(size.width, size.height) / 2f - 20f
 
         // 绘制外圈
         drawCircle(
@@ -273,7 +273,7 @@ fun SatellitePolarChart(
         val labels = listOf("N", "E", "S", "W")
         for (i in labels.indices) {
             val angle = i * PI / 2 - PI / 2
-            val labelRadius = radius + 16
+            val labelRadius = radius + 16f
             val labelX = centerX + labelRadius * cos(angle).toFloat()
             val labelY = centerY + labelRadius * sin(angle).toFloat()
             drawContext.canvas.nativeCanvas.apply {
@@ -282,7 +282,7 @@ fun SatellitePolarChart(
                     textSize = 24f
                     textAlign = android.graphics.Paint.Align.CENTER
                 }
-                drawText(labels[i], labelX, labelY + 8, paint)
+                drawText(labels[i], labelX, labelY + 8f, paint)
             }
         }
 
@@ -311,7 +311,7 @@ fun SatellitePolarChart(
             }
 
             // 根据信噪比决定大小
-            val size = (8 + satellite.snr / 6).coerceIn(4f, 16f)
+            val size = (8f + satellite.snr / 6f).coerceIn(4f, 16f)
 
             // 绘制卫星点
             drawCircle(

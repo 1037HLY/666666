@@ -14,7 +14,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -357,13 +359,11 @@ fun ElevationChart(
         val chartWidth = size.width - padding * 2
         val chartHeight = size.height - padding * 2
 
-        // 找到最大最小值
         val elevations = tracks.map { it.altitude }
         val maxElev = elevations.maxOrNull() ?: 100.0
         val minElev = elevations.minOrNull() ?: 0.0
         val range = if (maxElev - minElev < 1) 10.0 else maxElev - minElev
 
-        // 绘制网格
         for (i in 0..4) {
             val y = padding + chartHeight * i / 4
             drawLine(
@@ -382,17 +382,16 @@ fun ElevationChart(
             }
         }
 
-        // 绘制海拔曲线
         val path = Path()
         val points = tracks.takeLast(50)
         
         points.forEachIndexed { index, track ->
             val x = padding + chartWidth * index / (points.size - 1).coerceAtLeast(1)
-            val y = padding + chartHeight * (1 - ((track.altitude - minElev) / range))
+            val y = padding + chartHeight * (1 - ((track.altitude - minElev) / range)).toFloat()
             if (index == 0) {
-                path.moveTo(x, y)
+                path.moveTo(x.toFloat(), y)
             } else {
-                path.lineTo(x, y)
+                path.lineTo(x.toFloat(), y)
             }
         }
 
@@ -402,20 +401,19 @@ fun ElevationChart(
             style = Stroke(width = 3f)
         )
 
-        // 绘制填充区域
         val fillPath = Path()
         points.forEachIndexed { index, track ->
             val x = padding + chartWidth * index / (points.size - 1).coerceAtLeast(1)
-            val y = padding + chartHeight * (1 - ((track.altitude - minElev) / range))
+            val y = padding + chartHeight * (1 - ((track.altitude - minElev) / range)).toFloat()
             if (index == 0) {
-                fillPath.moveTo(x, y)
+                fillPath.moveTo(x.toFloat(), y)
             } else {
-                fillPath.lineTo(x, y)
+                fillPath.lineTo(x.toFloat(), y)
             }
         }
         if (points.isNotEmpty()) {
             val lastX = padding + chartWidth * (points.size - 1) / (points.size - 1).coerceAtLeast(1)
-            fillPath.lineTo(lastX, padding + chartHeight)
+            fillPath.lineTo(lastX.toFloat(), padding + chartHeight)
             fillPath.lineTo(padding, padding + chartHeight)
             fillPath.close()
         }
@@ -576,7 +574,6 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isGPSExpanded = !state.isGPSExpanded },
             modifier = Modifier.weight(1f),
             smallContent = {
-                // 小窗口：显示坐标、地名、海拔
                 if (location != null) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -619,7 +616,6 @@ fun HomeScreen(state: HomeScreenState) {
                 }
             },
             expandedContent = {
-                // 大窗口：显示完整详细信息
                 if (!fineLocationPermissionState.status.isGranted) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -778,7 +774,6 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isSatelliteExpanded = !state.isSatelliteExpanded },
             modifier = Modifier.weight(1f),
             smallContent = {
-                // 小窗口：显示卫星数量、锁定数量、星座分布
                 Column(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
@@ -788,9 +783,8 @@ fun HomeScreen(state: HomeScreenState) {
                     ) {
                         Text("🛰️ ${satellites.size}颗", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1E293B))
                         val usedCount = satellites.count { it.usedInFix }
-                        Text("✅ 已锁定: $usedCount颗", fontSize = 14.sp, color = Color(0xFF4CAF50))
+                        Text("✅ 已锁定: ${usedCount}颗", fontSize = 14.sp, color = Color(0xFF4CAF50))
                     }
-                    // 星座分布
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
@@ -807,11 +801,9 @@ fun HomeScreen(state: HomeScreenState) {
                 }
             },
             expandedContent = {
-                // 大窗口：上半屏极坐标图，下半屏卫星详细信息
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // 上半屏：卫星极坐标图
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -824,7 +816,6 @@ fun HomeScreen(state: HomeScreenState) {
                                 satellites = satellites,
                                 modifier = Modifier.fillMaxSize()
                             )
-                            // 统计覆盖层
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
@@ -861,7 +852,6 @@ fun HomeScreen(state: HomeScreenState) {
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 下半屏：卫星详细信息列表
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -929,7 +919,6 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isTrackExpanded = !state.isTrackExpanded },
             modifier = Modifier.weight(1f),
             smallContent = {
-                // 小窗口：显示实时海拔变化曲线
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -947,11 +936,9 @@ fun HomeScreen(state: HomeScreenState) {
                 }
             },
             expandedContent = {
-                // 大窗口：上半屏轨迹地图，下半屏导航
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // 上半屏：实时行进轨迹
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -966,14 +953,12 @@ fun HomeScreen(state: HomeScreenState) {
                                 Text("起点: ${String.format("%.4f", tracks.first().latitude)}, ${String.format("%.4f", tracks.first().longitude)}", fontSize = 12.sp)
                                 Text("终点: ${String.format("%.4f", tracks.last().latitude)}, ${String.format("%.4f", tracks.last().longitude)}", fontSize = 12.sp)
                                 Text("记录中: ${if (isTracking) "✅" else "⏸️"}", fontSize = 12.sp)
-                                // 显示海拔变化
                                 val elevs = tracks.map { it.altitude }
                                 Text("最高: ${String.format("%.1f", elevs.maxOrNull() ?: 0.0)}m, 最低: ${String.format("%.1f", elevs.minOrNull() ?: 0.0)}m", fontSize = 12.sp)
                             } else {
                                 Text("暂无轨迹数据", fontSize = 14.sp, color = Color.Gray)
                                 Text("点击「开始记录」开始收集", fontSize = 12.sp, color = Color.Gray)
                             }
-                            // 简化的轨迹地图显示 - 显示点阵
                             if (tracks.size > 1) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Canvas(
@@ -1000,7 +985,6 @@ fun HomeScreen(state: HomeScreenState) {
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 下半屏：轨迹导航
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1018,7 +1002,6 @@ fun HomeScreen(state: HomeScreenState) {
                             }
                             Text("功能开发中...", fontSize = 13.sp, color = Color(0xFF94A3B8))
                             Spacer(modifier = Modifier.height(8.dp))
-                            // 导航控制按钮
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)

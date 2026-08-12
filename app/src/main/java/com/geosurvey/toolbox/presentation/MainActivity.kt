@@ -663,7 +663,9 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = locationName,
+                        text = if (locationName.isNotEmpty() && locationName != "地址获取失败" && locationName != "正在获取地址...") 
+                            locationName 
+                        else "坐标: ${String.format("%.4f", location!!.latitude)}°, ${String.format("%.4f", location!!.longitude)}°",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF1E293B),
@@ -826,12 +828,40 @@ fun GPSFullscreenContent(
             val usedCount = satellites.count { it.usedInFix }
             val avgSnr = if (satellites.isNotEmpty()) satellites.map { it.snr }.average().toFloat() else 0f
 
-            // 公里网坐标（简化计算）
             val kmLat = location.latitude / 1.0
             val kmLng = location.longitude / 1.0
+            val egmAltitude = location.altitude - 30.0
 
-            // EGM校正后的海拔（简化模拟，实际需要EGM模型）
-            val egmAltitude = location.altitude - 30.0 // 模拟EGM校正
+            // ===== 地址信息 =====
+            Text(
+                "📍 当前位置",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF0EA5E9)
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = if (locationName.isNotEmpty() && locationName != "地址获取失败" && locationName != "正在获取地址...") 
+                            locationName 
+                        else "当前坐标: ${String.format("%.4f", location.latitude)}°, ${String.format("%.4f", location.longitude)}°",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF1E293B)
+                    )
+                    if (detailedAddress != null && detailedAddress.fullAddress.isNotEmpty()) {
+                        Text(
+                            text = detailedAddress.fullAddress,
+                            fontSize = 14.sp,
+                            color = Color(0xFF475569)
+                        )
+                    }
+                }
+            }
 
             // ===== 坐标信息 =====
             Text(
@@ -961,6 +991,7 @@ fun GPSFullscreenContent(
                 CircularProgressIndicator(modifier = Modifier.size(48.dp), color = Color(0xFF0EA5E9))
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("正在搜索GPS信号...", fontSize = 18.sp, color = Color.Gray)
+                Text("请在室外开阔地带等待", fontSize = 14.sp, color = Color.Gray)
                 Button(onClick = { viewModel.restartLocation() }) {
                     Text("重新尝试定位")
                 }

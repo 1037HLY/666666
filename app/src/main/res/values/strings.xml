@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">地质勘查工具箱</string>
+    <string name="nav_home">GPS</string>
+    <string name="nav_analysis">分析</string>
+    <string name="nav_record">记录</string>
+    <string name="nav_camera">相机</string>
+</resources>

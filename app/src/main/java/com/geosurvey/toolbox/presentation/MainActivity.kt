@@ -11,7 +11,9 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -338,6 +340,7 @@ fun HomeScreen(state: HomeScreenState) {
     val isTracking by viewModel.isTracking.collectAsState()
     val satellites by viewModel.satellites.collectAsState()
     val locationName by viewModel.locationName.collectAsState()
+    val detailedAddress by viewModel.detailedAddress.collectAsState()
     val context = LocalContext.current
 
     // 权限状态
@@ -370,7 +373,7 @@ fun HomeScreen(state: HomeScreenState) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 窗口1：GPS定位信息
+        // 窗口1：GPS定位信息 - 增强版
         PreviewWindow(
             title = "GPS 定位",
             subtitle = if (location != null) "📍 定位已获取" else "⏳ 正在获取定位...",
@@ -410,10 +413,15 @@ fun HomeScreen(state: HomeScreenState) {
                         }
                     }
                 } else if (location != null) {
+                    // 获取详细地址信息
+                    val addr = detailedAddress
                     Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // 地点名称
+                        // === 当前位置名称 ===
                         Text(
                             text = "📍 当前位置",
                             fontSize = 16.sp,
@@ -422,48 +430,94 @@ fun HomeScreen(state: HomeScreenState) {
                         )
                         Text(
                             text = locationName,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Color(0xFF1E293B)
                         )
                         
-                        Spacer(modifier = Modifier.height(4.dp))
+                        // === 详细地址信息 ===
+                        if (addr != null) {
+                            Text(
+                                text = "📮 详细地址",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF64748B)
+                            )
+                            if (addr.fullAddress.isNotEmpty() && addr.fullAddress != locationName) {
+                                Text(
+                                    text = addr.fullAddress,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF475569)
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (addr.country.isNotEmpty()) {
+                                    Text("🌍 ${addr.country}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                }
+                                if (addr.adminArea.isNotEmpty()) {
+                                    Text("🏛️ ${addr.adminArea}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                }
+                                if (addr.subAdminArea.isNotEmpty()) {
+                                    Text("🏙️ ${addr.subAdminArea}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (addr.locality.isNotEmpty()) {
+                                    Text("📍 ${addr.locality}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                }
+                                if (addr.subLocality.isNotEmpty()) {
+                                    Text("🏘️ ${addr.subLocality}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                }
+                                if (addr.postalCode.isNotEmpty()) {
+                                    Text("📬 ${addr.postalCode}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                }
+                            }
+                        }
                         
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+                        
+                        // === 坐标信息 ===
                         Text(
-                            text = "📍 位置信息",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "📌 坐标信息",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF0EA5E9)
                         )
-                        Text("纬度: ${String.format("%.6f", location!!.latitude)}°", fontSize = 15.sp)
-                        Text("经度: ${String.format("%.6f", location!!.longitude)}°", fontSize = 15.sp)
-                        Text("海拔: ${String.format("%.1f", location!!.altitude)} m", fontSize = 15.sp)
+                        Text("纬度: ${String.format("%.6f", location!!.latitude)}°", fontSize = 14.sp)
+                        Text("经度: ${String.format("%.6f", location!!.longitude)}°", fontSize = 14.sp)
+                        Text("海拔: ${String.format("%.1f", location!!.altitude)} m", fontSize = 14.sp)
                         
-                        Spacer(modifier = Modifier.height(4.dp))
-                        
+                        // === 精度与速度 ===
                         Text(
                             text = "📊 精度与速度",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF10B981)
                         )
-                        Text("精度: ${String.format("%.1f", location!!.accuracy)} m", fontSize = 15.sp)
-                        Text("速度: ${String.format("%.1f", location!!.speed)} m/s", fontSize = 15.sp)
-                        Text("方向: ${String.format("%.1f", location!!.bearing)}°", fontSize = 15.sp)
+                        Text("水平精度: ${String.format("%.1f", location!!.accuracy)} m", fontSize = 14.sp)
+                        Text("速度: ${String.format("%.1f", location!!.speed)} m/s", fontSize = 14.sp)
+                        Text("方向: ${String.format("%.1f", location!!.bearing)}°", fontSize = 14.sp)
+                        Text("定位源: ${location!!.provider}", fontSize = 14.sp)
                         
-                        Spacer(modifier = Modifier.height(4.dp))
-                        
+                        // === 卫星信息 ===
                         Text(
-                            text = "🛰️ 卫星与质量",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "🛰️ 卫星信息",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF8B5CF6)
                         )
-                        Text("卫星数: ${uiState.satelliteCount}", fontSize = 15.sp)
-                        Text("HDOP: ${String.format("%.1f", uiState.hdop)}", fontSize = 15.sp)
+                        Text("可见卫星: ${uiState.satelliteCount} 颗", fontSize = 14.sp)
+                        Text("HDOP: ${String.format("%.1f", uiState.hdop)}", fontSize = 14.sp)
+                        Text("SNR: ${String.format("%.1f", uiState.snr)} dB", fontSize = 14.sp)
                         Text(
                             text = "质量: ${uiState.qualityText}",
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             color = when (uiState.quality) {
                                 com.geosurvey.toolbox.domain.model.LocationQuality.EXCELLENT -> Color(0xFF4CAF50)
                                 com.geosurvey.toolbox.domain.model.LocationQuality.GOOD -> Color(0xFF8BC34A)
@@ -476,6 +530,7 @@ fun HomeScreen(state: HomeScreenState) {
                         
                         Spacer(modifier = Modifier.height(8.dp))
                         
+                        // === 操作按钮 ===
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -496,6 +551,20 @@ fun HomeScreen(state: HomeScreenState) {
                                 Text(if (isTracking) "⏹ 停止记录" else "▶ 开始记录")
                             }
                             Button(
+                                onClick = { viewModel.restartLocation() },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFF59E0B)
+                                )
+                            ) {
+                                Text("🔄 刷新定位")
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
                                 onClick = { viewModel.loadTracks() },
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
@@ -504,14 +573,20 @@ fun HomeScreen(state: HomeScreenState) {
                             ) {
                                 Text("📂 加载轨迹")
                             }
+                            Text(
+                                text = "轨迹点: ${uiState.tracks.size}",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(8.dp)
+                                    .background(Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                    .wrapContentSize(Alignment.Center),
+                                fontSize = 13.sp,
+                                color = Color(0xFF475569)
+                            )
                         }
-                        Text(
-                            text = "轨迹点: ${uiState.tracks.size} 个",
-                            fontSize = 13.sp,
-                            color = Color.Gray
-                        )
                     }
                 } else {
+                    // 正在搜索GPS
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,

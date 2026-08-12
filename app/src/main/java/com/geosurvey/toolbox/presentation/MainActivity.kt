@@ -1,6 +1,8 @@
 package com.geosurvey.toolbox.presentation
 
 import android.Manifest
+import android.content.Context
+import android.location.LocationManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,7 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.*
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -26,17 +28,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.geosurvey.toolbox.R
+import com.geosurvey.toolbox.domain.model.Constellation
 import com.geosurvey.toolbox.presentation.viewmodel.LocationViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import com.google.accompanist.permissions.shouldShowRationale
 
 // --- 1. 定义导航路由 ---
 sealed class Screen(val route: String) {
@@ -113,32 +114,11 @@ fun MainScreen(
     val fineLocationPermissionState = rememberPermissionState(
         Manifest.permission.ACCESS_FINE_LOCATION
     )
-    val coarseLocationPermissionState = rememberPermissionState(
-        Manifest.permission.ACCESS_COARSE_LOCATION
-    )
-    val backgroundLocationPermissionState = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-        rememberPermissionState(
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        )
-    } else {
-        null
-    }
 
     // 检查并请求权限
     LaunchedEffect(Unit) {
         if (!fineLocationPermissionState.status.isGranted) {
             fineLocationPermissionState.launchPermissionRequest()
-        }
-        if (!coarseLocationPermissionState.status.isGranted) {
-            coarseLocationPermissionState.launchPermissionRequest()
-        }
-        // Android 10+ 请求后台定位权限
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            if (backgroundLocationPermissionState != null &&
-                !backgroundLocationPermissionState.status.isGranted
-            ) {
-                backgroundLocationPermissionState.launchPermissionRequest()
-            }
         }
     }
 
@@ -252,61 +232,7 @@ fun GlassBottomNavigation(
     }
 }
 
-// --- 6. 液态玻璃卡片 ---
-@Composable
-fun GlassCard(
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    content: @Composable BoxScope.() -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clickable { onClick() }
-            .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(24.dp),
-                ambientColor = Color.Black.copy(alpha = 0.12f),
-                spotColor = Color.Black.copy(alpha = 0.08f)
-            )
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.75f),
-                        Color.White.copy(alpha = 0.5f)
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
-    ) {
-        // 顶部高光条
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0f),
-                            Color.White.copy(alpha = 0.9f),
-                            Color.White.copy(alpha = 0f)
-                        )
-                    )
-                )
-                .align(Alignment.TopCenter)
-        )
-
-        // 内容
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            content()
-        }
-    }
-}
-
-// --- 7. 预览窗口 ---
+// --- 6. 预览窗口（修复点击展开） ---
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PreviewWindow(
@@ -317,65 +243,104 @@ fun PreviewWindow(
     modifier: Modifier = Modifier,
     expandedContent: @Composable (() -> Unit)? = null
 ) {
-    GlassCard(
+    Card(
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = 0.7f,
-                    stiffness = Spring.StiffnessMedium
-                )
-            ),
-        onClick = onToggle
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // 标题行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF1E293B)
-                )
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (isExpanded) "折叠" else "展开",
-                    tint = Color(0xFF64748B)
-                )
+            .clickable { 
+                onToggle() 
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 内容区域
-            if (isExpanded && expandedContent != null) {
-                AnimatedContent(
-                    targetState = true,
-                    transitionSpec = {
-                        fadeIn() + slideInVertically() with fadeOut() + slideOutVertically()
-                    }
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        expandedContent()
-                    }
-                }
-            } else {
-                Text(
-                    text = subtitle,
-                    fontSize = 14.sp,
-                    color = Color(0xFF64748B)
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = Color.Black.copy(alpha = 0.12f),
+                spotColor = Color.Black.copy(alpha = 0.08f)
+            ),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.75f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = 0.7f,
+                        stiffness = Spring.StiffnessMedium
+                    )
                 )
+        ) {
+            // 顶部高光条
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0f),
+                                Color.White.copy(alpha = 0.9f),
+                                Color.White.copy(alpha = 0f)
+                            )
+                        )
+                    )
+                    .align(Alignment.TopCenter)
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                // 标题行 - 点击标题也会触发展开
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggle() },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1E293B)
+                    )
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "折叠" else "展开",
+                        tint = Color(0xFF64748B)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 内容区域
+                if (isExpanded && expandedContent != null) {
+                    AnimatedContent(
+                        targetState = true,
+                        transitionSpec = {
+                            fadeIn() + slideInVertically() with fadeOut() + slideOutVertically()
+                        }
+                    ) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            expandedContent()
+                        }
+                    }
+                } else {
+                    Text(
+                        text = subtitle,
+                        fontSize = 14.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
             }
         }
     }
 }
 
-// --- 8. HomeScreen（带定位功能）---
+// --- 7. HomeScreen（带定位功能） ---
 @Composable
 fun HomeScreen(state: HomeScreenState) {
     val viewModel: LocationViewModel = viewModel()
@@ -383,6 +348,23 @@ fun HomeScreen(state: HomeScreenState) {
     val location by viewModel.currentLocation.collectAsState()
     val isTracking by viewModel.isTracking.collectAsState()
     val satellites by viewModel.satellites.collectAsState()
+    val context = LocalContext.current
+
+    // 权限状态
+    val fineLocationPermissionState = rememberPermissionState(
+        Manifest.permission.ACCESS_FINE_LOCATION
+    )
+
+    // 检查并请求权限
+    LaunchedEffect(Unit) {
+        if (!fineLocationPermissionState.status.isGranted) {
+            fineLocationPermissionState.launchPermissionRequest()
+        }
+    }
+
+    // 检查GPS是否开启
+    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
 
     Column(
         modifier = Modifier
@@ -398,11 +380,33 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isPreview1Expanded = !state.isPreview1Expanded },
             modifier = Modifier.weight(1f),
             expandedContent = {
-                if (location != null) {
+                if (!fineLocationPermissionState.status.isGranted) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Text("⚠️ 缺少定位权限", fontSize = 16.sp, color = Color.Red)
+                        Button(
+                            onClick = { fineLocationPermissionState.launchPermissionRequest() },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Text("授予权限")
+                        }
+                    }
+                } else if (!isGpsEnabled) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Text("⚠️ GPS未开启", fontSize = 16.sp, color = Color.Red)
+                        Text("请打开GPS定位", fontSize = 14.sp, color = Color.Gray)
+                    }
+                } else if (location != null) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // 坐标信息
                         Text(
                             text = "📍 位置信息",
                             fontSize = 16.sp,
@@ -415,7 +419,6 @@ fun HomeScreen(state: HomeScreenState) {
                         
                         Spacer(modifier = Modifier.height(4.dp))
                         
-                        // 精度和速度
                         Text(
                             text = "📊 精度与速度",
                             fontSize = 16.sp,
@@ -428,7 +431,6 @@ fun HomeScreen(state: HomeScreenState) {
                         
                         Spacer(modifier = Modifier.height(4.dp))
                         
-                        // 卫星和质量
                         Text(
                             text = "🛰️ 卫星与质量",
                             fontSize = 16.sp,
@@ -437,7 +439,6 @@ fun HomeScreen(state: HomeScreenState) {
                         )
                         Text("卫星数: ${uiState.satelliteCount}", fontSize = 15.sp)
                         Text("HDOP: ${String.format("%.1f", uiState.hdop)}", fontSize = 15.sp)
-                        Text("信噪比: ${String.format("%.1f", uiState.snr)} dB", fontSize = 15.sp)
                         Text(
                             text = "质量: ${uiState.qualityText}",
                             fontSize = 15.sp,
@@ -453,7 +454,6 @@ fun HomeScreen(state: HomeScreenState) {
                         
                         Spacer(modifier = Modifier.height(8.dp))
                         
-                        // 轨迹记录控制
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -510,6 +510,16 @@ fun HomeScreen(state: HomeScreenState) {
                             fontSize = 14.sp,
                             color = Color.Gray
                         )
+                        Text(
+                            text = "GPS状态: ${if (isGpsEnabled) "已开启 ✅" else "未开启 ❌"}",
+                            fontSize = 14.sp,
+                            color = if (isGpsEnabled) Color(0xFF4CAF50) else Color.Red
+                        )
+                        Text(
+                            text = "权限: ${if (fineLocationPermissionState.status.isGranted) "已授予 ✅" else "未授予 ❌"}",
+                            fontSize = 14.sp,
+                            color = if (fineLocationPermissionState.status.isGranted) Color(0xFF4CAF50) else Color.Red
+                        )
                     }
                 }
             }
@@ -520,11 +530,12 @@ fun HomeScreen(state: HomeScreenState) {
             title = "卫星与轨迹",
             subtitle = "🛰️ 卫星: ${satellites.size}颗 | 轨迹: ${uiState.tracks.size}个点",
             isExpanded = state.isPreview2Expanded,
-            onToggle = { state.isPreview2Expanded = !state.isPreview2Expanded },
+            onToggle = { 
+                state.isPreview2Expanded = !state.isPreview2Expanded
+            },
             modifier = Modifier.weight(1f),
             expandedContent = {
                 Column {
-                    // 卫星信息
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -535,17 +546,19 @@ fun HomeScreen(state: HomeScreenState) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("📡 卫星极坐标图", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Text("可见卫星: ${satellites.size} 颗", fontSize = 13.sp)
-                            // 显示卫星星座分布
-                            val gpsCount = satellites.count { it.constellation == com.geosurvey.toolbox.domain.model.Constellation.GPS }
-                            val glonassCount = satellites.count { it.constellation == com.geosurvey.toolbox.domain.model.Constellation.GLONASS }
-                            val galileoCount = satellites.count { it.constellation == com.geosurvey.toolbox.domain.model.Constellation.GALILEO }
-                            val beidouCount = satellites.count { it.constellation == com.geosurvey.toolbox.domain.model.Constellation.BEIDOU }
-                            Text("GPS: $gpsCount  GLONASS: $glonassCount", fontSize = 12.sp)
-                            Text("Galileo: $galileoCount  北斗: $beidouCount", fontSize = 12.sp)
+                            if (satellites.isNotEmpty()) {
+                                val gpsCount = satellites.count { it.constellation == Constellation.GPS }
+                                val glonassCount = satellites.count { it.constellation == Constellation.GLONASS }
+                                val galileoCount = satellites.count { it.constellation == Constellation.GALILEO }
+                                val beidouCount = satellites.count { it.constellation == Constellation.BEIDOU }
+                                Text("GPS: $gpsCount  GLONASS: $glonassCount", fontSize = 12.sp)
+                                Text("Galileo: $galileoCount  北斗: $beidouCount", fontSize = 12.sp)
+                            } else {
+                                Text("等待卫星信号...", fontSize = 12.sp, color = Color.Gray)
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    // 卫星详细信息
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -556,12 +569,10 @@ fun HomeScreen(state: HomeScreenState) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("🛰️ 卫星信息窗口", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             if (satellites.isNotEmpty()) {
-                                // 显示前5颗卫星信息
                                 satellites.take(5).forEach { satellite ->
                                     Text(
                                         "${satellite.constellation.name} #${satellite.prn} | " +
-                                        "SNR: ${String.format("%.1f", satellite.snr)} dB | " +
-                                        "仰角: ${String.format("%.1f", satellite.elevation)}°",
+                                        "SNR: ${String.format("%.1f", satellite.snr)} dB",
                                         fontSize = 11.sp,
                                         color = if (satellite.usedInFix) Color(0xFF4CAF50) else Color.Gray
                                     )
@@ -583,11 +594,12 @@ fun HomeScreen(state: HomeScreenState) {
             title = "轨迹与导航",
             subtitle = "🗺️ 实时轨迹: ${uiState.tracks.size}个点 | 导航: 待开发",
             isExpanded = state.isPreview3Expanded,
-            onToggle = { state.isPreview3Expanded = !state.isPreview3Expanded },
+            onToggle = { 
+                state.isPreview3Expanded = !state.isPreview3Expanded
+            },
             modifier = Modifier.weight(1f),
             expandedContent = {
                 Column {
-                    // 实时轨迹
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -611,7 +623,6 @@ fun HomeScreen(state: HomeScreenState) {
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    // 轨迹导航
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -631,7 +642,7 @@ fun HomeScreen(state: HomeScreenState) {
     }
 }
 
-// --- 9. AnalysisScreen ---
+// --- 8. AnalysisScreen ---
 @Composable
 fun AnalysisScreen(state: AnalysisScreenState) {
     Column(
@@ -713,7 +724,7 @@ fun AnalysisScreen(state: AnalysisScreenState) {
     }
 }
 
-// --- 10. RecordScreen ---
+// --- 9. RecordScreen ---
 @Composable
 fun RecordScreen(state: RecordScreenState) {
     Column(
@@ -745,7 +756,7 @@ fun RecordScreen(state: RecordScreenState) {
     }
 }
 
-// --- 11. CameraScreen ---
+// --- 10. CameraScreen ---
 @Composable
 fun CameraScreen(state: CameraScreenState) {
     Column(
@@ -777,7 +788,7 @@ fun CameraScreen(state: CameraScreenState) {
     }
 }
 
-// --- 12. 预览 ---
+// --- 11. 预览 ---
 @Preview(showBackground = true)
 @Composable
 fun PreviewMainScreen() {

@@ -2018,7 +2018,7 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 }
             }
 
-            val color = Color(0xFF0EA5E9)
+            val roseColor = Color(0xFF0EA5E9)
             
             for (i in 0 until bins) {
                 val angle = i.toDouble() * 2 * PI / bins
@@ -2052,12 +2052,12 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 val alpha = 0.3f + 0.7f * (count / maxCount)
                 drawPath(
                     path = path,
-                    color = color.copy(alpha = alpha)
+                    color = roseColor.copy(alpha = alpha)
                 )
                 
                 drawPath(
                     path = path,
-                    color = color.copy(alpha = 0.8f),
+                    color = roseColor.copy(alpha = 0.8f),
                     style = Stroke(width = 1f)
                 )
             }

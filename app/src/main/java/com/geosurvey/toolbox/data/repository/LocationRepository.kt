@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 import com.geosurvey.toolbox.data.database.LocationDao
 import com.geosurvey.toolbox.data.database.LocationEntity
@@ -23,13 +24,11 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Date
 
 /**
  * 定位数据仓库
@@ -114,9 +113,12 @@ class LocationRepository(
             )
 
             // 同时监听GNSS状态
-            // 使用Android 7.0+的GnssStatus
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                locationManager.registerGnssStatusCallback(gnssStatusCallback, null)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    locationManager.registerGnssStatusCallback(gnssStatusCallback, null)
+                } catch (e: SecurityException) {
+                    // 忽略权限异常
+                }
             }
         } catch (e: SecurityException) {
             isRunning = false
@@ -139,7 +141,7 @@ class LocationRepository(
         }
         locationCallback = null
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
                 locationManager.unregisterGnssStatusCallback(gnssStatusCallback)
             } catch (e: Exception) {
@@ -204,7 +206,7 @@ class LocationRepository(
             val quality = LocationQualityEvaluator.evaluate(rawLocation)
 
             // 3. 过滤低质量定位点
-            if (quality == LocationQuality.BAD) {
+            if (quality == LocationQuality.BAD || quality == LocationQuality.UNKNOWN) {
                 return@launch
             }
 
@@ -350,7 +352,7 @@ class LocationRepository(
     /**
      * GNSS状态回调（Android 7.0+）
      */
-    private val gnssStatusCallback = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+    private val gnssStatusCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         object : android.location.GnssStatus.Callback() {
             override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
                 val satelliteList = mutableListOf<SatelliteInfo>()
@@ -392,7 +394,7 @@ class LocationRepository(
      * 获取卫星数量
      */
     private fun getSatelliteCount(): Int {
-        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
                 val status = locationManager.getGnssStatus(null)
                 status?.satelliteCount ?: 0
@@ -401,6 +403,7 @@ class LocationRepository(
             }
         } else {
             try {
+                @Suppress("DEPRECATION")
                 val status = locationManager.getGpsStatus(null)
                 status?.satellites?.size ?: 0
             } catch (e: Exception) {
@@ -455,6 +458,7 @@ class LocationRepository(
      */
     fun cleanup() {
         stopLocationUpdates()
-        repositoryScope.cancel()
+        // 取消协程作用域
+        repositoryScope.coroutineContext.cancelChildren()
     }
 }

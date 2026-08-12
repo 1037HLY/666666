@@ -38,47 +38,32 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     val trackPoints = locationRepository.trackPoints
 
     init {
-        Log.d(TAG, "LocationViewModel initialized")
-
-        // 自动开始定位
-        locationRepository.startLocationUpdates()
-
-        // 监听定位变化，更新UI状态
-        viewModelScope.launch {
-            locationRepository.currentLocation.collect { location ->
-                Log.d(TAG, "Location updated in ViewModel: $location")
-                location?.let {
-                    _uiState.value = _uiState.value.copy(
-                        location = it,
-                        quality = LocationQualityEvaluator.evaluate(it),
-                        qualityText = LocationQualityEvaluator.getQualityDescription(
-                            LocationQualityEvaluator.evaluate(it)
-                        ),
-                        satelliteCount = it.satelliteCount,
-                        hdop = it.hdop,
-                        snr = it.snr
-                    )
-                }
-            }
-        }
-
-        // 监听卫星变化
-        viewModelScope.launch {
-            locationRepository.satellites.collect { satelliteList ->
-                _uiState.value = _uiState.value.copy(
-                    satelliteCount = satelliteList.size
-                )
-            }
-        }
+        Log.d(TAG, "========== LocationViewModel initialized ==========")
+        startLocation()
     }
 
     /**
-     * 重新开始定位（用于手动刷新）
+     * 开始定位
+     */
+    fun startLocation() {
+        Log.d(TAG, "startLocation() called")
+        locationRepository.startLocationUpdates()
+    }
+
+    /**
+     * 重新开始定位
      */
     fun restartLocation() {
-        Log.d(TAG, "Restarting location updates")
+        Log.d(TAG, "restartLocation() called")
         locationRepository.stopLocationUpdates()
-        locationRepository.startLocationUpdates()
+        // 延迟一下再重新开始
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(500)
+            locationRepository.startLocationUpdates()
+            // 强制触发一次位置更新
+            kotlinx.coroutines.delay(1000)
+            locationRepository.forceLocationUpdate()
+        }
     }
 
     /**

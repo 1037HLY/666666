@@ -330,7 +330,7 @@ fun SatellitePolarChart(
     }
 }
 
-// --- 7. 预览窗口（点击切换小/大窗口） ---
+// --- 7. 预览窗口 ---
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PreviewWindow(
@@ -338,8 +338,8 @@ fun PreviewWindow(
     isExpanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
-    smallContent: @Composable () -> Unit,   // 小窗口显示的内容
-    expandedContent: @Composable () -> Unit // 大窗口显示的内容
+    smallContent: @Composable () -> Unit,
+    expandedContent: @Composable () -> Unit
 ) {
     Card(
         modifier = modifier
@@ -367,7 +367,6 @@ fun PreviewWindow(
                     )
                 )
         ) {
-            // 顶部高光条
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -389,7 +388,6 @@ fun PreviewWindow(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // 标题行
                 Text(
                     text = title,
                     fontSize = if (isExpanded) 20.sp else 16.sp,
@@ -398,7 +396,6 @@ fun PreviewWindow(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                // 内容切换
                 AnimatedContent(
                     targetState = isExpanded,
                     transitionSpec = {
@@ -470,6 +467,8 @@ fun HomeScreen(state: HomeScreenState) {
             smallContent = {
                 // 小窗口：只显示坐标和地名
                 if (location != null) {
+                    // 使用局部变量避免 Smart cast 问题
+                    val loc = location
                     Column(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
@@ -481,12 +480,12 @@ fun HomeScreen(state: HomeScreenState) {
                             maxLines = 1
                         )
                         Text(
-                            text = "${String.format("%.4f", location.latitude)}°, ${String.format("%.4f", location.longitude)}°",
+                            text = "${String.format("%.4f", loc.latitude)}°, ${String.format("%.4f", loc.longitude)}°",
                             fontSize = 12.sp,
                             color = Color(0xFF64748B)
                         )
                         Text(
-                            text = "海拔: ${String.format("%.1f", location.altitude)}m | 精度: ${String.format("%.1f", location.accuracy)}m",
+                            text = "海拔: ${String.format("%.1f", loc.altitude)}m | 精度: ${String.format("%.1f", loc.accuracy)}m",
                             fontSize = 11.sp,
                             color = Color(0xFF94A3B8)
                         )
@@ -539,6 +538,8 @@ fun HomeScreen(state: HomeScreenState) {
                         }
                     }
                 } else if (location != null) {
+                    // 使用局部变量避免 Smart cast 问题
+                    val loc = location
                     val addr = detailedAddress
                     Column(
                         modifier = Modifier
@@ -575,9 +576,9 @@ fun HomeScreen(state: HomeScreenState) {
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF0EA5E9)
                         )
-                        Text("纬度: ${String.format("%.6f", location.latitude)}°", fontSize = 14.sp)
-                        Text("经度: ${String.format("%.6f", location.longitude)}°", fontSize = 14.sp)
-                        Text("海拔: ${String.format("%.1f", location.altitude)} m", fontSize = 14.sp)
+                        Text("纬度: ${String.format("%.6f", loc.latitude)}°", fontSize = 14.sp)
+                        Text("经度: ${String.format("%.6f", loc.longitude)}°", fontSize = 14.sp)
+                        Text("海拔: ${String.format("%.1f", loc.altitude)} m", fontSize = 14.sp)
                         
                         Text(
                             text = "📊 精度与速度",
@@ -585,10 +586,10 @@ fun HomeScreen(state: HomeScreenState) {
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF10B981)
                         )
-                        Text("水平精度: ${String.format("%.1f", location.accuracy)} m", fontSize = 14.sp)
-                        Text("速度: ${String.format("%.1f", location.speed)} m/s", fontSize = 14.sp)
-                        Text("方向: ${String.format("%.1f", location.bearing)}°", fontSize = 14.sp)
-                        Text("定位源: ${location.provider}", fontSize = 14.sp)
+                        Text("水平精度: ${String.format("%.1f", loc.accuracy)} m", fontSize = 14.sp)
+                        Text("速度: ${String.format("%.1f", loc.speed)} m/s", fontSize = 14.sp)
+                        Text("方向: ${String.format("%.1f", loc.bearing)}°", fontSize = 14.sp)
+                        Text("定位源: ${loc.provider}", fontSize = 14.sp)
                         
                         Text(
                             text = "🛰️ 卫星信息",
@@ -697,7 +698,6 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isPreview2Expanded = !state.isPreview2Expanded },
             modifier = Modifier.weight(1f),
             smallContent = {
-                // 小窗口：只显示卫星数量和轨迹点数
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -713,7 +713,6 @@ fun HomeScreen(state: HomeScreenState) {
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // 卫星极坐标图
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -763,7 +762,6 @@ fun HomeScreen(state: HomeScreenState) {
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 卫星详细信息
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -819,7 +817,6 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isPreview3Expanded = !state.isPreview3Expanded },
             modifier = Modifier.weight(1f),
             smallContent = {
-                // 小窗口：只显示轨迹点数
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.geosurvey.toolbox.data.database.LocationDao
 import com.geosurvey.toolbox.data.database.LocationEntity
@@ -32,6 +33,10 @@ class LocationRepository(
     private val context: Context,
     private val locationDao: LocationDao
 ) {
+    companion object {
+        private const val TAG = "LocationRepository"
+    }
+
     private val fusedLocationClient: FusedLocationProviderClient by lazy {
         LocationServices.getFusedLocationProviderClient(context)
     }
@@ -68,26 +73,56 @@ class LocationRepository(
      * 开始定位
      */
     fun startLocationUpdates() {
-        if (isRunning) return
-        if (!hasLocationPermission()) return
+        Log.d(TAG, "startLocationUpdates() called")
+        
+        if (isRunning) {
+            Log.d(TAG, "Location updates already running")
+            return
+        }
+        
+        if (!hasLocationPermission()) {
+            Log.e(TAG, "No location permission")
+            return
+        }
+
+        // 检查GPS是否开启
+        val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        val isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        Log.d(TAG, "GPS enabled: $isGpsEnabled, Network enabled: $isNetworkEnabled")
+        
+        if (!isGpsEnabled && !isNetworkEnabled) {
+            Log.e(TAG, "No location provider enabled")
+            return
+        }
 
         isRunning = true
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
+                Log.d(TAG, "onLocationResult: ${result.locations.size} locations received")
                 result.lastLocation?.let { location ->
+                    Log.d(TAG, "Location: lat=${location.latitude}, lng=${location.longitude}, acc=${location.accuracy}")
                     handleNewLocation(location)
+                } ?: run {
+                    Log.d(TAG, "No location in result")
                 }
             }
         }
 
         try {
+            val request = createLocationRequest()
+            Log.d(TAG, "Requesting location updates with priority: ${request.priority}")
             fusedLocationClient.requestLocationUpdates(
-                createLocationRequest(),
+                request,
                 locationCallback!!,
                 null
             )
+            Log.d(TAG, "Location updates requested successfully")
         } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException when requesting location updates", e)
+            isRunning = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception when requesting location updates", e)
             isRunning = false
         }
     }
@@ -102,8 +137,9 @@ class LocationRepository(
         locationCallback?.let {
             try {
                 fusedLocationClient.removeLocationUpdates(it)
+                Log.d(TAG, "Location updates stopped")
             } catch (e: Exception) {
-                // ignore
+                Log.e(TAG, "Error stopping location updates", e)
             }
         }
         locationCallback = null
@@ -114,6 +150,7 @@ class LocationRepository(
      */
     fun startTracking() {
         _isTracking.value = true
+        Log.d(TAG, "Tracking started")
     }
 
     /**
@@ -123,6 +160,7 @@ class LocationRepository(
         _isTracking.value = false
         kalmanFilter.reset()
         previousLocation = null
+        Log.d(TAG, "Tracking stopped")
     }
 
     /**
@@ -157,49 +195,60 @@ class LocationRepository(
      */
     private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
-            val rawLocation = createLocationData(location)
-            val quality = LocationQualityEvaluator.evaluate(rawLocation)
+            try {
+                Log.d(TAG, "handleNewLocation: processing location")
+                
+                val rawLocation = createLocationData(location)
+                val quality = LocationQualityEvaluator.evaluate(rawLocation)
+                Log.d(TAG, "Location quality: $quality")
 
-            if (quality == LocationQuality.BAD || quality == LocationQuality.UNKNOWN) {
-                return@launch
-            }
-
-            previousLocation?.let { prev ->
-                if (LocationQualityEvaluator.isDriftDetected(prev, rawLocation)) {
+                if (quality == LocationQuality.BAD || quality == LocationQuality.UNKNOWN) {
+                    Log.d(TAG, "Location quality too low, skipping")
                     return@launch
                 }
-            }
 
-            previousLocation?.let { prev ->
-                if (LocationQualityEvaluator.isStationary(rawLocation, prev)) {
-                    isStationary = true
-                    if (_isTracking.value) {
-                        previousLocation = rawLocation
+                previousLocation?.let { prev ->
+                    if (LocationQualityEvaluator.isDriftDetected(prev, rawLocation)) {
+                        Log.d(TAG, "Drift detected, skipping location")
                         return@launch
                     }
-                } else {
-                    isStationary = false
                 }
+
+                previousLocation?.let { prev ->
+                    if (LocationQualityEvaluator.isStationary(rawLocation, prev)) {
+                        isStationary = true
+                        if (_isTracking.value) {
+                            previousLocation = rawLocation
+                            return@launch
+                        }
+                    } else {
+                        isStationary = false
+                    }
+                }
+
+                val (filteredLat, filteredLng) = kalmanFilter.update(
+                    rawLocation.latitude,
+                    rawLocation.longitude
+                )
+
+                val filteredLocation = rawLocation.copy(
+                    latitude = filteredLat,
+                    longitude = filteredLng
+                )
+
+                _currentLocation.value = filteredLocation
+                Log.d(TAG, "Current location updated: lat=$filteredLat, lng=$filteredLng")
+                
+                saveLocationToDatabase(filteredLocation)
+
+                if (_isTracking.value && !isStationary) {
+                    saveTrackPoint(filteredLocation)
+                }
+
+                previousLocation = filteredLocation
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling location", e)
             }
-
-            val (filteredLat, filteredLng) = kalmanFilter.update(
-                rawLocation.latitude,
-                rawLocation.longitude
-            )
-
-            val filteredLocation = rawLocation.copy(
-                latitude = filteredLat,
-                longitude = filteredLng
-            )
-
-            _currentLocation.value = filteredLocation
-            saveLocationToDatabase(filteredLocation)
-
-            if (_isTracking.value && !isStationary) {
-                saveTrackPoint(filteredLocation)
-            }
-
-            previousLocation = filteredLocation
         }
     }
 
@@ -229,62 +278,72 @@ class LocationRepository(
      * 保存定位数据到数据库
      */
     private suspend fun saveLocationToDatabase(location: LocationData) {
-        val entity = LocationEntity(
-            latitude = location.latitude,
-            longitude = location.longitude,
-            altitude = location.altitude,
-            accuracy = location.accuracy,
-            speed = location.speed,
-            bearing = location.bearing,
-            time = location.time,
-            provider = location.provider,
-            satelliteCount = location.satelliteCount,
-            hdop = location.hdop,
-            pdop = location.pdop,
-            vdop = location.vdop,
-            snr = location.snr,
-            quality = location.quality.name
-        )
-        locationDao.insertLocation(entity)
+        try {
+            val entity = LocationEntity(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = location.altitude,
+                accuracy = location.accuracy,
+                speed = location.speed,
+                bearing = location.bearing,
+                time = location.time,
+                provider = location.provider,
+                satelliteCount = location.satelliteCount,
+                hdop = location.hdop,
+                pdop = location.pdop,
+                vdop = location.vdop,
+                snr = location.snr,
+                quality = location.quality.name
+            )
+            locationDao.insertLocation(entity)
+            Log.d(TAG, "Location saved to database")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving location to database", e)
+        }
     }
 
     /**
      * 保存轨迹点
      */
     private suspend fun saveTrackPoint(location: LocationData) {
-        val track = TrackEntity(
-            latitude = location.latitude,
-            longitude = location.longitude,
-            altitude = location.altitude,
-            speed = location.speed,
-            bearing = location.bearing,
-            accuracy = location.accuracy,
-            time = location.time,
-            satelliteCount = location.satelliteCount,
-            hdop = location.hdop,
-            pdop = location.pdop,
-            provider = location.provider,
-            isFromBackground = false
-        )
-        locationDao.insertTrackPoint(track)
+        try {
+            val track = TrackEntity(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = location.altitude,
+                speed = location.speed,
+                bearing = location.bearing,
+                accuracy = location.accuracy,
+                time = location.time,
+                satelliteCount = location.satelliteCount,
+                hdop = location.hdop,
+                pdop = location.pdop,
+                provider = location.provider,
+                isFromBackground = false
+            )
+            locationDao.insertTrackPoint(track)
 
-        val currentTracks = _trackPoints.value.toMutableList()
-        currentTracks.add(track)
-        if (currentTracks.size > 1000) {
-            currentTracks.removeAt(0)
+            val currentTracks = _trackPoints.value.toMutableList()
+            currentTracks.add(track)
+            if (currentTracks.size > 1000) {
+                currentTracks.removeAt(0)
+            }
+            _trackPoints.value = currentTracks
+            Log.d(TAG, "Track point saved, total: ${currentTracks.size}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving track point", e)
         }
-        _trackPoints.value = currentTracks
     }
 
     /**
-     * 创建位置请求
+     * 创建位置请求 - 使用更积极的定位策略
      */
     private fun createLocationRequest(): com.google.android.gms.location.LocationRequest {
         return com.google.android.gms.location.LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            1000
+            1000 // 1秒更新一次
         )
-            .setMinUpdateDistanceMeters(1.0f)
+            .setMinUpdateDistanceMeters(0.5f) // 移动0.5米就更新
             .setMinUpdateIntervalMillis(1000)
             .setMaxUpdateDelayMillis(5000)
             .build()

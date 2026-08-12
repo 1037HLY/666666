@@ -633,7 +633,6 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ===== 窗口1：GPS定位 =====
         SmallWindowCard(
             title = "GPS 定位",
             modifier = Modifier.weight(1f),
@@ -698,7 +697,6 @@ fun HomeScreen(
             }
         }
 
-        // ===== 窗口2：卫星 =====
         SmallWindowCard(
             title = "卫星",
             modifier = Modifier.weight(1f),
@@ -738,7 +736,6 @@ fun HomeScreen(
             }
         }
 
-        // ===== 窗口3：轨迹与导航 =====
         SmallWindowCard(
             title = "轨迹与导航",
             modifier = Modifier.weight(1f),
@@ -843,12 +840,7 @@ fun GPSFullscreenContent(
             val usedCount = satellites.count { it.usedInFix }
             val avgSnr = if (satellites.isNotEmpty()) satellites.map { it.snr }.average().toFloat() else 0f
 
-            Text(
-                "📍 当前位置",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0EA5E9)
-            )
+            Text("📍 当前位置", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
@@ -1123,7 +1115,6 @@ fun TrackFullscreenContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // ===== 上半屏：实时轨迹 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1182,7 +1173,6 @@ fun TrackFullscreenContent(
                         }
                     }
 
-                    // 导航状态显示
                     if (isNavigating && navigationTarget != null) {
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
                         Row(
@@ -1275,7 +1265,6 @@ fun TrackFullscreenContent(
         
         Spacer(modifier = Modifier.height(8.dp))
         
-        // ===== 下半屏：轨迹导航 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1288,12 +1277,7 @@ fun TrackFullscreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxSize()
             ) {
-                Text(
-                    "🧭 轨迹导航",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E293B)
-                )
+                Text("🧭 轨迹导航", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -1328,8 +1312,7 @@ fun TrackFullscreenContent(
                         Button(
                             onClick = {
                                 if (tracks.isNotEmpty()) {
-                                    val target = tracks.last()
-                                    viewModel.setNavigationTarget(target)
+                                    viewModel.setNavigationTarget(tracks.last())
                                 }
                             },
                             modifier = Modifier.weight(1f),
@@ -1379,24 +1362,12 @@ fun TrackFullscreenContent(
                         )
                     }
                 } else {
-                    Text(
-                        "请先记录轨迹数据",
-                        fontSize = 14.sp,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Text(
-                        "点击「开始记录」收集轨迹",
-                        fontSize = 12.sp,
-                        color = Color(0xFF94A3B8)
-                    )
+                    Text("请先记录轨迹数据", fontSize = 14.sp, color = Color(0xFF94A3B8))
+                    Text("点击「开始记录」收集轨迹", fontSize = 12.sp, color = Color(0xFF94A3B8))
                 }
                 
                 Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    "点击外部关闭",
-                    fontSize = 11.sp,
-                    color = Color(0xFF94A3B8)
-                )
+                Text("点击外部关闭", fontSize = 11.sp, color = Color(0xFF94A3B8))
             }
         }
     }
@@ -1422,7 +1393,7 @@ private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): D
     return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 }
 
-// --- 13. AnalysisScreen - 产状测量 ---
+// --- 13. AnalysisScreen ---
 @Composable
 fun AnalysisScreen(
     state: AnalysisScreenState,
@@ -1439,7 +1410,6 @@ fun AnalysisScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ===== 产状测量 =====
         SmallWindowCard(
             title = "产状测量",
             modifier = Modifier.weight(1f),
@@ -1471,7 +1441,6 @@ fun AnalysisScreen(
             }
         }
 
-        // ===== 赤平投影 & 玫瑰花图 =====
         SmallWindowCard(
             title = "赤平投影 & 玫瑰花图",
             modifier = Modifier.weight(1f),
@@ -1493,7 +1462,6 @@ fun AnalysisScreen(
             }
         }
         
-        // ===== 钻孔计算 & 绘制 =====
         SmallWindowCard(
             title = "钻孔计算 & 绘制",
             modifier = Modifier.weight(1f),
@@ -1547,7 +1515,7 @@ fun AttitudeFullscreenContent(
     viewModel: LocationViewModel,
     currentAttitude: AttitudeData?,
     attitudeHistory: List<AttitudeData>,
-    currentLocation: LocationData?
+    currentLocation: com.geosurvey.toolbox.domain.model.LocationData?
 ) {
     var noteText by remember { mutableStateOf("") }
     var showHistory by remember { mutableStateOf(false) }
@@ -1558,20 +1526,9 @@ fun AttitudeFullscreenContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            "📐 产状测量",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0EA5E9)
-        )
-        
-        Text(
-            "将手机背面贴合岩层面",
-            fontSize = 14.sp,
-            color = Color(0xFF64748B)
-        )
+        Text("📐 产状测量", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+        Text("将手机背面贴合岩层面", fontSize = 14.sp, color = Color(0xFF64748B))
 
-        // 当前测量值
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
@@ -1617,10 +1574,8 @@ fun AttitudeFullscreenContent(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 方位指示器
                     AttitudeCompass(dipDirection = currentAttitude.dipDirection)
                     
-                    // 位置信息
                     if (currentLocation != null) {
                         Text(
                             "📍 ${String.format("%.4f", currentLocation.latitude)}, ${String.format("%.4f", currentLocation.longitude)}",
@@ -1642,7 +1597,6 @@ fun AttitudeFullscreenContent(
             }
         }
 
-        // 备注输入和记录按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1672,7 +1626,6 @@ fun AttitudeFullscreenContent(
             }
         }
 
-        // 历史记录切换
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -1763,7 +1716,6 @@ fun AttitudeCompass(dipDirection: Float) {
         val centerY = size.height / 2
         val radius = size.width / 2 - 8
         
-        // 外圈
         drawCircle(
             color = Color(0xFF94A3B8),
             radius = radius,
@@ -1771,7 +1723,6 @@ fun AttitudeCompass(dipDirection: Float) {
             style = Stroke(width = 2f)
         )
         
-        // 方向刻度
         val directions = listOf("N", "E", "S", "W")
         for (i in 0..3) {
             val angle = i * PI / 2 - PI / 2
@@ -1788,28 +1739,24 @@ fun AttitudeCompass(dipDirection: Float) {
             }
         }
         
-        // 指针
         val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
         val pointerLength = radius * 0.7f
         val endX = centerX + pointerLength * cos(angleRad)
         val endY = centerY + pointerLength * sin(angleRad)
         
-        // 指针线
         drawLine(
             color = Color(0xFFEF4444),
-            start = Offset(centerX, centerY),
+            start = Offset(centerX.toFloat(), centerY.toFloat()),
             end = Offset(endX.toFloat(), endY.toFloat()),
             strokeWidth = 4f
         )
         
-        // 中心点
         drawCircle(
             color = Color(0xFF0EA5E9),
             radius = 6f,
-            center = Offset(centerX, centerY)
+            center = Offset(centerX.toFloat(), centerY.toFloat())
         )
         
-        // 数值显示
         drawContext.canvas.nativeCanvas.apply {
             val paint = android.graphics.Paint().apply {
                 color = android.graphics.Color.parseColor("#1E293B")
@@ -1817,7 +1764,7 @@ fun AttitudeCompass(dipDirection: Float) {
                 textAlign = android.graphics.Paint.Align.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
-            drawText("${String.format("%.0f", dipDirection)}°", centerX, centerY + radius + 20, paint)
+            drawText("${String.format("%.0f", dipDirection)}°", centerX.toFloat(), centerY + radius + 20, paint)
         }
     }
 }
@@ -1837,14 +1784,8 @@ fun ProjectionFullscreenContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            "📊 赤平投影 & 玫瑰花图",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0EA5E9)
-        )
+        Text("📊 赤平投影 & 玫瑰花图", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
 
-        // Tab切换
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1915,7 +1856,6 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
             val centerY = size.height / 2
             val radius = min(size.width, size.height) / 2 - 20
 
-            // 外圈
             drawCircle(
                 color = Color(0xFF1E293B),
                 radius = radius,
@@ -1923,7 +1863,6 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 style = Stroke(width = 2f)
             )
 
-            // 同心圆 (30°, 60°)
             for (r in listOf(0.33f, 0.66f)) {
                 drawCircle(
                     color = Color(0xFF94A3B8),
@@ -1933,7 +1872,6 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 )
             }
 
-            // 十字线
             for (i in 0..3) {
                 val angle = i * PI / 2
                 val endX = centerX + radius * cos(angle)
@@ -1946,7 +1884,6 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 )
             }
 
-            // 方向标签
             val dirs = listOf("N", "E", "S", "W")
             for (i in 0..3) {
                 val angle = i * PI / 2 - PI / 2
@@ -1963,7 +1900,6 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 }
             }
 
-            // 绘制产状点
             val colors = listOf(
                 Color(0xFFEF4444),
                 Color(0xFF3B82F6),
@@ -1977,19 +1913,19 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 val dipDirRad = Math.toRadians(attitude.dipDirection.toDouble())
                 
                 val r = radius * tan(PI / 4 - dipRad / 2)
-                val x = centerX + r * sin(dipDirRad)
-                val y = centerY - r * cos(dipDirRad)
+                val x = (centerX + r * sin(dipDirRad)).toFloat()
+                val y = (centerY - r * cos(dipDirRad)).toFloat()
                 
                 drawCircle(
                     color = colors[index % colors.size],
                     radius = 6f,
-                    center = Offset(x.toFloat(), y.toFloat())
+                    center = Offset(x, y)
                 )
                 
                 drawCircle(
                     color = colors[index % colors.size].copy(alpha = 0.3f),
                     radius = 12f,
-                    center = Offset(x.toFloat(), y.toFloat()),
+                    center = Offset(x, y),
                     style = Stroke(width = 1f)
                 )
             }
@@ -2036,7 +1972,6 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
             val centerY = size.height / 2
             val maxRadius = min(size.width, size.height) / 2 - 20
 
-            // 统计走向方向分布 (10度间隔)
             val bins = 36
             val binSize = 10.0
             val counts = IntArray(bins)
@@ -2050,7 +1985,6 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
 
             val maxCount = counts.maxOrNull()?.toFloat() ?: 1f
 
-            // 绘制外圈
             drawCircle(
                 color = Color(0xFF1E293B),
                 radius = maxRadius,
@@ -2058,7 +1992,6 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 style = Stroke(width = 1f)
             )
 
-            // 绘制网格
             for (i in 1..3) {
                 val r = maxRadius * i / 4
                 drawCircle(
@@ -2069,7 +2002,6 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 )
             }
 
-            // 方向标签
             val dirs = listOf("N", "E", "S", "W")
             for (i in 0..3) {
                 val angle = i * PI / 2 - PI / 2
@@ -2086,7 +2018,6 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 }
             }
 
-            // 绘制玫瑰花图
             val color = Color(0xFF0EA5E9)
             
             for (i in 0 until bins) {
@@ -2131,14 +2062,12 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 )
             }
 
-            // 中心圆
             drawCircle(
                 color = Color(0xFF1E293B),
                 radius = 4f,
                 center = Offset(centerX, centerY)
             )
 
-            // 统计信息
             drawContext.canvas.nativeCanvas.apply {
                 val paint = android.graphics.Paint().apply {
                     color = android.graphics.Color.parseColor("#64748B")

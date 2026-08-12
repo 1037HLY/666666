@@ -347,6 +347,21 @@ fun HomeScreen(state: HomeScreenState) {
     // 检查GPS是否开启
     val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+    val isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+    // 请求权限
+    LaunchedEffect(Unit) {
+        if (!fineLocationPermissionState.status.isGranted) {
+            fineLocationPermissionState.launchPermissionRequest()
+        }
+    }
+
+    // 当权限授予后重新开始定位
+    LaunchedEffect(fineLocationPermissionState.status.isGranted) {
+        if (fineLocationPermissionState.status.isGranted) {
+            viewModel.restartLocation()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -370,20 +385,28 @@ fun HomeScreen(state: HomeScreenState) {
                     ) {
                         Text("⚠️ 缺少定位权限", fontSize = 16.sp, color = Color.Red)
                         Button(
-                            onClick = { fineLocationPermissionState.launchPermissionRequest() },
+                            onClick = { 
+                                fineLocationPermissionState.launchPermissionRequest()
+                            },
                             modifier = Modifier.padding(top = 8.dp)
                         ) {
                             Text("授予权限")
                         }
                     }
-                } else if (!isGpsEnabled) {
+                } else if (!isGpsEnabled && !isNetworkEnabled) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        Text("⚠️ GPS未开启", fontSize = 16.sp, color = Color.Red)
-                        Text("请打开GPS定位", fontSize = 14.sp, color = Color.Gray)
+                        Text("⚠️ 定位服务未开启", fontSize = 16.sp, color = Color.Red)
+                        Text("请打开GPS或网络定位", fontSize = 14.sp, color = Color.Gray)
+                        Button(
+                            onClick = { viewModel.restartLocation() },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Text("重新尝试定位")
+                        }
                     }
                 } else if (location != null) {
                     Column(
@@ -498,10 +521,21 @@ fun HomeScreen(state: HomeScreenState) {
                             color = if (isGpsEnabled) Color(0xFF4CAF50) else Color.Red
                         )
                         Text(
+                            text = "网络定位: ${if (isNetworkEnabled) "已开启 ✅" else "未开启 ❌"}",
+                            fontSize = 14.sp,
+                            color = if (isNetworkEnabled) Color(0xFF4CAF50) else Color.Red
+                        )
+                        Text(
                             text = "权限: ${if (fineLocationPermissionState.status.isGranted) "已授予 ✅" else "未授予 ❌"}",
                             fontSize = 14.sp,
                             color = if (fineLocationPermissionState.status.isGranted) Color(0xFF4CAF50) else Color.Red
                         )
+                        Button(
+                            onClick = { viewModel.restartLocation() },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Text("重新尝试定位")
+                        }
                     }
                 }
             }

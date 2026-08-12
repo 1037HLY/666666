@@ -74,7 +74,8 @@ class LocationForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopLocationService()
-        serviceScope.cancel()
+        // 取消协程
+        serviceScope.coroutineContext.cancelChildren()
     }
 
     /**

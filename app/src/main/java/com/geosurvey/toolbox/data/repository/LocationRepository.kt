@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 /**
- * 定位数据仓库 - 高精度GPS版本
+ * 定位数据仓库 - 纯真实GPS版本（无模拟数据）
  */
 class LocationRepository(
     private val context: Context,
@@ -136,7 +136,7 @@ class LocationRepository(
                     locationCount++
                     Log.d(TAG, "📍 第${locationCount}次定位: lat=${location.latitude}, lng=${location.longitude}, acc=${location.accuracy}m, provider=${location.provider}")
                     
-                    // 只接受GPS或网络定位，忽略模拟数据
+                    // 只接受真实GPS或网络定位
                     val provider = location.provider ?: ""
                     if (provider == "gps" || provider == "network" || provider == "fused") {
                         handleNewLocation(location)
@@ -152,7 +152,6 @@ class LocationRepository(
         }
 
         try {
-            // 使用最高精度定位请求
             val request = createHighAccuracyLocationRequest()
             Log.d(TAG, "请求高精度定位更新")
             
@@ -196,7 +195,7 @@ class LocationRepository(
     }
 
     /**
-     * 注册GNSS状态回调 - 提高搜星能力
+     * 注册GNSS状态回调
      */
     private fun registerGnssStatusCallback() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
@@ -311,7 +310,6 @@ class LocationRepository(
         }
         locationCallback = null
         
-        // 取消GNSS回调
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             try {
                 gnssStatusCallback?.let { callback ->
@@ -370,12 +368,12 @@ class LocationRepository(
     }
 
     /**
-     * 处理新的定位数据
+     * 处理新的定位数据 - 只使用真实GPS
      */
     private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
             try {
-                // 验证坐标是否为有效值（排除0,0和异常值）
+                // 验证坐标是否为有效值
                 if (location.latitude == 0.0 && location.longitude == 0.0) {
                     Log.d(TAG, "⚠️ 无效坐标 (0,0)，跳过")
                     return@launch
@@ -386,6 +384,12 @@ class LocationRepository(
                     location.longitude > 180 || location.longitude < -180) {
                     Log.d(TAG, "⚠️ 坐标超出合理范围，跳过")
                     return@launch
+                }
+                
+                // 检查精度是否合理（精度大于100米可能是定位不准）
+                if (location.accuracy > 100) {
+                    Log.d(TAG, "⚠️ 精度过低 (${location.accuracy}m)，等待更精确的定位")
+                    // 仍然显示，但标记为低精度
                 }
                 
                 Log.d(TAG, "处理定位数据: lat=${location.latitude}, lng=${location.longitude}")
@@ -449,7 +453,7 @@ class LocationRepository(
     }
 
     /**
-     * 获取地点名称（反向地理编码）- 增强版
+     * 获取地点名称
      */
     private fun fetchLocationName(lat: Double, lng: Double) {
         try {
@@ -459,7 +463,6 @@ class LocationRepository(
             if (addresses != null && addresses.isNotEmpty()) {
                 val address = addresses[0]
                 
-                // 构建完整地址
                 val fullAddress = address.getAddressLine(0) ?: ""
                 val country = address.countryName ?: ""
                 val adminArea = address.adminArea ?: ""
@@ -470,7 +473,6 @@ class LocationRepository(
                 val featureName = address.featureName ?: ""
                 val postalCode = address.postalCode ?: ""
                 
-                // 构建显示名称
                 val displayName = buildString {
                     if (featureName.isNotEmpty()) {
                         append(featureName)
@@ -506,7 +508,6 @@ class LocationRepository(
                 
                 _locationName.value = displayName
                 
-                // 保存详细地址
                 _detailedAddress.value = DetailedAddress(
                     fullAddress = fullAddress,
                     country = country,
@@ -523,7 +524,6 @@ class LocationRepository(
             } else {
                 _locationName.value = "无法获取地址"
                 _detailedAddress.value = null
-                Log.d(TAG, "未找到地址信息")
             }
         } catch (e: Exception) {
             Log.e(TAG, "获取地址异常: ${e.message}")

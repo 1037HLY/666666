@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.geosurvey.toolbox.data.database.AppDatabase
 import com.geosurvey.toolbox.data.database.TrackEntity
+import com.geosurvey.toolbox.data.repository.AttitudeData
 import com.geosurvey.toolbox.data.repository.LocationRepository
 import com.geosurvey.toolbox.domain.model.LocationData
 import com.geosurvey.toolbox.domain.model.LocationQuality
@@ -23,10 +24,11 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     private val database = AppDatabase.getDatabase(application)
     private val locationRepository = LocationRepository(application, database.locationDao())
 
+    // ===== UI状态 =====
     private val _uiState = MutableStateFlow(LocationUiState())
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
 
-    // 定位数据
+    // ===== 定位数据 =====
     val currentLocation: StateFlow<LocationData?> = locationRepository.currentLocation
     val satellites: StateFlow<List<SatelliteInfo>> = locationRepository.satellites
     val isTracking: StateFlow<Boolean> = locationRepository.isTracking
@@ -34,17 +36,23 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     val locationName = locationRepository.locationName
     val detailedAddress = locationRepository.detailedAddress
 
-    // 导航状态
+    // ===== 导航数据 =====
     val isNavigating: StateFlow<Boolean> = locationRepository.isNavigating
     val navigationTarget: StateFlow<TrackEntity?> = locationRepository.navigationTarget
     val navigationDistance: StateFlow<Double> = locationRepository.navigationDistance
     val navigationBearing: StateFlow<Double> = locationRepository.navigationBearing
 
+    // ===== 产状数据 =====
+    val currentAttitude: StateFlow<AttitudeData?> = locationRepository.currentAttitude
+    val attitudeHistory: StateFlow<List<AttitudeData>> = locationRepository.attitudeHistory
+
     init {
         Log.d(TAG, "========== LocationViewModel 初始化 ==========")
         startLocation()
+        startAttitudeMeasurement()
     }
 
+    // ============ 定位控制 ============
     fun startLocation() {
         Log.d(TAG, "开始定位")
         locationRepository.startLocationUpdates()
@@ -61,6 +69,7 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // ============ 轨迹控制 ============
     fun startTracking() {
         locationRepository.startTracking()
         _uiState.value = _uiState.value.copy(isRecording = true)
@@ -78,15 +87,33 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // 导航功能
+    // ============ 导航控制 ============
     fun setNavigationTarget(track: TrackEntity?) {
         locationRepository.setNavigationTarget(track)
     }
 
-    fun cancelNavigation() {
-        locationRepository.setNavigationTarget(null)
+    // ============ 产状控制 ============
+    fun startAttitudeMeasurement() {
+        locationRepository.startAttitudeMeasurement()
     }
 
+    fun stopAttitudeMeasurement() {
+        locationRepository.stopAttitudeMeasurement()
+    }
+
+    fun saveAttitude(note: String = "") {
+        viewModelScope.launch {
+            locationRepository.saveAttitude(note)
+        }
+    }
+
+    fun clearAttitudeHistory() {
+        viewModelScope.launch {
+            locationRepository.clearAttitudeHistory()
+        }
+    }
+
+    // ============ 清理 ============
     override fun onCleared() {
         super.onCleared()
         locationRepository.cleanup()

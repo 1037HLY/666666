@@ -746,6 +746,7 @@ fun HomeScreen(
 }
 
 // --- 10. GPS全屏内容 ---
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun GPSFullscreenContent(
     viewModel: LocationViewModel,

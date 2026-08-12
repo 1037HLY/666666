@@ -1712,9 +1712,9 @@ fun AttitudeCompass(dipDirection: Float) {
             .size(120.dp)
             .background(Color(0xFFE2E8F0), RoundedCornerShape(60))
     ) {
-        val centerX = size.width / 2
-        val centerY = size.height / 2
-        val radius = size.width / 2 - 8
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val radius = size.width / 2f - 8f
         
         drawCircle(
             color = Color(0xFF94A3B8),
@@ -1726,35 +1726,35 @@ fun AttitudeCompass(dipDirection: Float) {
         val directions = listOf("N", "E", "S", "W")
         for (i in 0..3) {
             val angle = i * PI / 2 - PI / 2
-            val textRadius = radius - 16
-            val x = centerX + textRadius * cos(angle)
-            val y = centerY + textRadius * sin(angle)
+            val textRadius = radius - 16f
+            val x = centerX + textRadius * cos(angle).toFloat()
+            val y = centerY + textRadius * sin(angle).toFloat()
             drawContext.canvas.nativeCanvas.apply {
                 val paint = android.graphics.Paint().apply {
                     color = android.graphics.Color.parseColor("#64748B")
                     textSize = 16f
                     textAlign = android.graphics.Paint.Align.CENTER
                 }
-                drawText(directions[i], x.toFloat(), y + 6, paint)
+                drawText(directions[i], x, y + 6, paint)
             }
         }
         
         val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
         val pointerLength = radius * 0.7f
-        val endX = centerX + pointerLength * cos(angleRad)
-        val endY = centerY + pointerLength * sin(angleRad)
+        val endX = centerX + pointerLength * cos(angleRad).toFloat()
+        val endY = centerY + pointerLength * sin(angleRad).toFloat()
         
         drawLine(
             color = Color(0xFFEF4444),
-            start = Offset(centerX.toFloat(), centerY.toFloat()),
-            end = Offset(endX.toFloat(), endY.toFloat()),
+            start = Offset(centerX, centerY),
+            end = Offset(endX, endY),
             strokeWidth = 4f
         )
         
         drawCircle(
             color = Color(0xFF0EA5E9),
             radius = 6f,
-            center = Offset(centerX.toFloat(), centerY.toFloat())
+            center = Offset(centerX, centerY)
         )
         
         drawContext.canvas.nativeCanvas.apply {
@@ -1764,7 +1764,7 @@ fun AttitudeCompass(dipDirection: Float) {
                 textAlign = android.graphics.Paint.Align.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
-            drawText("${String.format("%.0f", dipDirection)}°", centerX.toFloat(), centerY + radius + 20, paint)
+            drawText("${String.format("%.0f", dipDirection)}°", centerX, centerY + radius + 20, paint)
         }
     }
 }
@@ -1852,9 +1852,9 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
         Canvas(
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
-            val centerX = size.width / 2
-            val centerY = size.height / 2
-            val radius = min(size.width, size.height) / 2 - 20
+            val centerX = size.width / 2f
+            val centerY = size.height / 2f
+            val radius = min(size.width, size.height) / 2f - 20f
 
             drawCircle(
                 color = Color(0xFF1E293B),
@@ -1874,12 +1874,12 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
 
             for (i in 0..3) {
                 val angle = i * PI / 2
-                val endX = centerX + radius * cos(angle)
-                val endY = centerY + radius * sin(angle)
+                val endX = centerX + radius * cos(angle).toFloat()
+                val endY = centerY + radius * sin(angle).toFloat()
                 drawLine(
                     color = Color(0xFF94A3B8),
                     start = Offset(centerX, centerY),
-                    end = Offset(endX.toFloat(), endY.toFloat()),
+                    end = Offset(endX, endY),
                     strokeWidth = 1f
                 )
             }
@@ -1887,16 +1887,16 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
             val dirs = listOf("N", "E", "S", "W")
             for (i in 0..3) {
                 val angle = i * PI / 2 - PI / 2
-                val labelRadius = radius + 16
-                val x = centerX + labelRadius * cos(angle)
-                val y = centerY + labelRadius * sin(angle)
+                val labelRadius = radius + 16f
+                val x = centerX + labelRadius * cos(angle).toFloat()
+                val y = centerY + labelRadius * sin(angle).toFloat()
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = android.graphics.Paint().apply {
                         color = android.graphics.Color.parseColor("#1E293B")
                         textSize = 16f
                         textAlign = android.graphics.Paint.Align.CENTER
                     }
-                    drawText(dirs[i], x.toFloat(), y + 6, paint)
+                    drawText(dirs[i], x, y + 6, paint)
                 }
             }
 
@@ -1912,9 +1912,9 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 val dipRad = Math.toRadians(attitude.dip.toDouble())
                 val dipDirRad = Math.toRadians(attitude.dipDirection.toDouble())
                 
-                val r = radius * tan(PI / 4 - dipRad / 2)
-                val x = (centerX + r * sin(dipDirRad)).toFloat()
-                val y = (centerY - r * cos(dipDirRad)).toFloat()
+                val r = radius * tan(PI / 4 - dipRad / 2).toFloat()
+                val x = centerX + r * sin(dipDirRad).toFloat()
+                val y = centerY - r * cos(dipDirRad).toFloat()
                 
                 drawCircle(
                     color = colors[index % colors.size],
@@ -1968,9 +1968,9 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
         Canvas(
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
-            val centerX = size.width / 2
-            val centerY = size.height / 2
-            val maxRadius = min(size.width, size.height) / 2 - 20
+            val centerX = size.width / 2f
+            val centerY = size.height / 2f
+            val maxRadius = min(size.width, size.height) / 2f - 20f
 
             val bins = 36
             val binSize = 10.0
@@ -2005,16 +2005,16 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
             val dirs = listOf("N", "E", "S", "W")
             for (i in 0..3) {
                 val angle = i * PI / 2 - PI / 2
-                val labelRadius = maxRadius + 16
-                val x = centerX + labelRadius * cos(angle)
-                val y = centerY + labelRadius * sin(angle)
+                val labelRadius = maxRadius + 16f
+                val x = centerX + labelRadius * cos(angle).toFloat()
+                val y = centerY + labelRadius * sin(angle).toFloat()
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = android.graphics.Paint().apply {
                         color = android.graphics.Color.parseColor("#1E293B")
                         textSize = 14f
                         textAlign = android.graphics.Paint.Align.CENTER
                     }
-                    drawText(dirs[i], x.toFloat(), y + 6, paint)
+                    drawText(dirs[i], x, y + 6, paint)
                 }
             }
 
@@ -2030,23 +2030,23 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 val path = Path()
                 path.moveTo(centerX, centerY)
                 
-                val p1x = centerX + r * sin(angle)
-                val p1y = centerY - r * cos(angle)
-                val p2x = centerX + r * sin(nextAngle)
-                val p2y = centerY - r * cos(nextAngle)
+                val p1x = centerX + r * sin(angle).toFloat()
+                val p1y = centerY - r * cos(angle).toFloat()
+                val p2x = centerX + r * sin(nextAngle).toFloat()
+                val p2y = centerY - r * cos(nextAngle).toFloat()
                 
-                path.lineTo(p1x.toFloat(), p1y.toFloat())
+                path.lineTo(p1x, p1y)
                 
                 val steps = 10
                 for (j in 1..steps) {
                     val t = j.toDouble() / steps
                     val a = angle + t * (nextAngle - angle)
-                    val px = centerX + r * sin(a)
-                    val py = centerY - r * cos(a)
-                    path.lineTo(px.toFloat(), py.toFloat())
+                    val px = centerX + r * sin(a).toFloat()
+                    val py = centerY - r * cos(a).toFloat()
+                    path.lineTo(px, py)
                 }
                 
-                path.lineTo(p2x.toFloat(), p2y.toFloat())
+                path.lineTo(p2x, p2y)
                 path.close()
                 
                 val alpha = 0.3f + 0.7f * (count / maxCount)

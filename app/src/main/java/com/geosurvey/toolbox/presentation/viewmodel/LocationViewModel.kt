@@ -10,7 +10,6 @@ import com.geosurvey.toolbox.data.repository.LocationRepository
 import com.geosurvey.toolbox.domain.model.LocationData
 import com.geosurvey.toolbox.domain.model.LocationQuality
 import com.geosurvey.toolbox.domain.model.SatelliteInfo
-import com.geosurvey.toolbox.domain.util.LocationQualityEvaluator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,12 +26,19 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     private val _uiState = MutableStateFlow(LocationUiState())
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
 
+    // 定位数据
     val currentLocation: StateFlow<LocationData?> = locationRepository.currentLocation
     val satellites: StateFlow<List<SatelliteInfo>> = locationRepository.satellites
     val isTracking: StateFlow<Boolean> = locationRepository.isTracking
     val trackPoints = locationRepository.trackPoints
     val locationName = locationRepository.locationName
     val detailedAddress = locationRepository.detailedAddress
+
+    // 导航状态
+    val isNavigating: StateFlow<Boolean> = locationRepository.isNavigating
+    val navigationTarget: StateFlow<TrackEntity?> = locationRepository.navigationTarget
+    val navigationDistance: StateFlow<Double> = locationRepository.navigationDistance
+    val navigationBearing: StateFlow<Double> = locationRepository.navigationBearing
 
     init {
         Log.d(TAG, "========== LocationViewModel 初始化 ==========")
@@ -70,6 +76,15 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
             val tracks = locationRepository.getRecentTracks(100)
             _uiState.value = _uiState.value.copy(tracks = tracks)
         }
+    }
+
+    // 导航功能
+    fun setNavigationTarget(track: TrackEntity?) {
+        locationRepository.setNavigationTarget(track)
+    }
+
+    fun cancelNavigation() {
+        locationRepository.setNavigationTarget(null)
     }
 
     override fun onCleared() {

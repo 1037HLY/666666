@@ -225,7 +225,7 @@ fun GlassBottomNavigation(
     }
 }
 
-// --- 6. 卫星极坐标图组件（修复类型错误） ---
+// --- 6. 卫星极坐标图组件（完全修复） ---
 @Composable
 fun SatellitePolarChart(
     satellites: List<com.geosurvey.toolbox.domain.model.SatelliteInfo>,
@@ -258,7 +258,7 @@ fun SatellitePolarChart(
 
         // 绘制十字线
         for (i in 0..3) {
-            val angle = i * PI / 2
+            val angle = i.toDouble() * PI / 2.0
             val endX = centerX + radius * cos(angle).toFloat()
             val endY = centerY + radius * sin(angle).toFloat()
             drawLine(
@@ -272,7 +272,7 @@ fun SatellitePolarChart(
         // 绘制方向标签
         val labels = listOf("N", "E", "S", "W")
         for (i in labels.indices) {
-            val angle = i * PI / 2 - PI / 2
+            val angle = i.toDouble() * PI / 2.0 - PI / 2.0
             val labelRadius = radius + 16f
             val labelX = centerX + labelRadius * cos(angle).toFloat()
             val labelY = centerY + labelRadius * sin(angle).toFloat()
@@ -291,17 +291,14 @@ fun SatellitePolarChart(
             val elevation = satellite.elevation
             val azimuth = satellite.azimuth
 
-            // 将仰角映射到半径 (0度在中心，90度在边缘)
-            val elevationRad = (elevation / 90.0).coerceIn(0.0, 1.0)
+            val elevationRad = (elevation.toDouble() / 90.0).coerceIn(0.0, 1.0)
             val r = radius * elevationRad
 
-            // 方位角 (0度 = 北)
-            val angleRad = Math.toRadians(azimuth.toDouble()) - PI / 2
+            val angleRad = Math.toRadians(azimuth.toDouble()) - PI / 2.0
 
             val x = centerX + r * cos(angleRad).toFloat()
             val y = centerY + r * sin(angleRad).toFloat()
 
-            // 根据星座选择颜色
             val color = when (satellite.constellation) {
                 Constellation.GPS -> Color(0xFF4CAF50)
                 Constellation.GLONASS -> Color(0xFF2196F3)
@@ -310,17 +307,14 @@ fun SatellitePolarChart(
                 else -> Color(0xFF9E9E9E)
             }
 
-            // 根据信噪比决定大小
             val size = (8f + satellite.snr / 6f).coerceIn(4f, 16f)
 
-            // 绘制卫星点
             drawCircle(
                 color = color.copy(alpha = if (satellite.usedInFix) 1f else 0.4f),
                 radius = size,
                 center = Offset(x, y)
             )
 
-            // 绘制外发光
             drawCircle(
                 color = color.copy(alpha = 0.2f),
                 radius = size * 1.8f,
@@ -381,7 +375,6 @@ fun PreviewWindow(
                     )
                 )
         ) {
-            // 顶部高光条
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -403,7 +396,6 @@ fun PreviewWindow(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // 标题行
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -426,7 +418,6 @@ fun PreviewWindow(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 内容区域
                 if (isExpanded && expandedContent != null) {
                     AnimatedContent(
                         targetState = true,
@@ -538,7 +529,6 @@ fun HomeScreen(state: HomeScreenState) {
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // 当前位置名称
                         Text(
                             text = "📍 当前位置",
                             fontSize = 16.sp,
@@ -552,7 +542,6 @@ fun HomeScreen(state: HomeScreenState) {
                             color = Color(0xFF1E293B)
                         )
                         
-                        // 详细地址
                         if (addr != null) {
                             Text(
                                 text = "📮 详细地址",
@@ -596,7 +585,6 @@ fun HomeScreen(state: HomeScreenState) {
                         
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
                         
-                        // 坐标信息
                         Text(
                             text = "📌 坐标信息",
                             fontSize = 14.sp,
@@ -607,7 +595,6 @@ fun HomeScreen(state: HomeScreenState) {
                         Text("经度: ${String.format("%.6f", location!!.longitude)}°", fontSize = 14.sp)
                         Text("海拔: ${String.format("%.1f", location!!.altitude)} m", fontSize = 14.sp)
                         
-                        // 精度与速度
                         Text(
                             text = "📊 精度与速度",
                             fontSize = 14.sp,
@@ -619,7 +606,6 @@ fun HomeScreen(state: HomeScreenState) {
                         Text("方向: ${String.format("%.1f", location!!.bearing)}°", fontSize = 14.sp)
                         Text("定位源: ${location!!.provider}", fontSize = 14.sp)
                         
-                        // 卫星信息
                         Text(
                             text = "🛰️ 卫星信息",
                             fontSize = 14.sp,
@@ -643,7 +629,6 @@ fun HomeScreen(state: HomeScreenState) {
                         
                         Spacer(modifier = Modifier.height(8.dp))
                         
-                        // 操作按钮
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -753,7 +738,6 @@ fun HomeScreen(state: HomeScreenState) {
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // 卫星极坐标图
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -766,7 +750,6 @@ fun HomeScreen(state: HomeScreenState) {
                                 satellites = satellites,
                                 modifier = Modifier.fillMaxSize()
                             )
-                            // 卫星统计覆盖层
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
@@ -788,7 +771,6 @@ fun HomeScreen(state: HomeScreenState) {
                                     )
                                 }
                             }
-                            // 图例
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
@@ -815,7 +797,6 @@ fun HomeScreen(state: HomeScreenState) {
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 卫星详细信息
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -328,7 +328,7 @@ fun PreviewWindow(
     }
 }
 
-// --- 7. HomeScreen（带定位功能） ---
+// --- 7. HomeScreen（带定位功能和地点名称） ---
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun HomeScreen(state: HomeScreenState) {
@@ -337,6 +337,7 @@ fun HomeScreen(state: HomeScreenState) {
     val location by viewModel.currentLocation.collectAsState()
     val isTracking by viewModel.isTracking.collectAsState()
     val satellites by viewModel.satellites.collectAsState()
+    val locationName by viewModel.locationName.collectAsState()
     val context = LocalContext.current
 
     // 权限状态
@@ -412,6 +413,22 @@ fun HomeScreen(state: HomeScreenState) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        // 地点名称
+                        Text(
+                            text = "📍 当前位置",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0EA5E9)
+                        )
+                        Text(
+                            text = locationName,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF1E293B)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
                         Text(
                             text = "📍 位置信息",
                             fontSize = 16.sp,

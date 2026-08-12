@@ -43,8 +43,10 @@ import androidx.navigation.compose.rememberNavController
 import com.geosurvey.toolbox.R
 import com.geosurvey.toolbox.domain.model.Constellation
 import com.geosurvey.toolbox.domain.model.LocationQuality
+import com.geosurvey.toolbox.presentation.viewmodel.LocationUiState
 import com.geosurvey.toolbox.presentation.viewmodel.LocationViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlin.math.*
@@ -477,7 +479,6 @@ fun ElevationChart(
 }
 
 // --- 8. 小窗口卡片 ---
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun SmallWindowCard(
     title: String,
@@ -624,7 +625,7 @@ fun HomeScreen(
                         detailedAddress = detailedAddress,
                         isGpsEnabled = isGpsEnabled,
                         isNetworkEnabled = isNetworkEnabled,
-                        fineLocationPermissionState = fineLocationPermissionState
+                        permissionState = fineLocationPermissionState
                     )
                 }
             }
@@ -748,7 +749,7 @@ fun HomeScreen(
 @Composable
 fun GPSFullscreenContent(
     viewModel: LocationViewModel,
-    uiState: LocationViewModel.LocationUiState,
+    uiState: LocationUiState,
     location: com.geosurvey.toolbox.domain.model.LocationData?,
     isTracking: Boolean,
     satellites: List<com.geosurvey.toolbox.domain.model.SatelliteInfo>,
@@ -756,7 +757,7 @@ fun GPSFullscreenContent(
     detailedAddress: com.geosurvey.toolbox.data.repository.LocationRepository.DetailedAddress?,
     isGpsEnabled: Boolean,
     isNetworkEnabled: Boolean,
-    fineLocationPermissionState: com.google.accompanist.permissions.ExperimentalPermissionsApi.PermissionState
+    permissionState: PermissionState
 ) {
     Column(
         modifier = Modifier
@@ -764,14 +765,14 @@ fun GPSFullscreenContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        if (!fineLocationPermissionState.status.isGranted) {
+        if (!permissionState.status.isGranted) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxSize()
             ) {
                 Text("⚠️ 缺少定位权限", fontSize = 20.sp, color = Color.Red)
-                Button(onClick = { fineLocationPermissionState.launchPermissionRequest() }) {
+                Button(onClick = { permissionState.launchPermissionRequest() }) {
                     Text("授予权限")
                 }
             }
@@ -912,7 +913,7 @@ fun GPSFullscreenContent(
 @Composable
 fun SatelliteFullscreenContent(
     satellites: List<com.geosurvey.toolbox.domain.model.SatelliteInfo>,
-    uiState: LocationViewModel.LocationUiState
+    uiState: LocationUiState
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
@@ -1036,7 +1037,7 @@ fun SatelliteFullscreenContent(
 fun TrackFullscreenContent(
     tracks: List<com.geosurvey.toolbox.data.database.TrackEntity>,
     isTracking: Boolean,
-    uiState: LocationViewModel.LocationUiState
+    uiState: LocationUiState
 ) {
     Column(
         modifier = Modifier.fillMaxSize()

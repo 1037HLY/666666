@@ -24,10 +24,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
+import kotlin.math.*
 
 /**
- * 定位仓库 - 直接透传GPS坐标
- * 不进行任何坐标转换，确保坐标准确
+ * 定位仓库 - 完整功能
+ * 1. 高斯-克吕格投影坐标计算
+ * 2. HDOP/VDOP估算
+ * 3. 方向计算
  */
 class LocationRepository(
     private val context: Context,
@@ -35,6 +38,14 @@ class LocationRepository(
 ) {
     companion object {
         private const val TAG = "LocationRepository"
+        
+        // 高斯-克吕格投影参数 (CGCS2000)
+        private const val A = 6378137.0          // 长半轴
+        private const val F = 1.0 / 298.257222101  // 扁率
+        private const val E2 = 2.0 * F - F * F   // 第一偏心率的平方
+        
+        // 中央子午线 (3度带)
+        private const val CENTRAL_MERIDIAN = 102.0  // 根据坐标自动计算
     }
 
     private val locationManager: LocationManager by lazy {
@@ -60,17 +71,28 @@ class LocationRepository(
     private val _detailedAddress = MutableStateFlow<DetailedAddress?>(null)
     val detailedAddress: StateFlow<DetailedAddress?> = _detailedAddress.asStateFlow()
 
+    // 高斯投影坐标 (米)
+    private val _gkX = MutableStateFlow(0.0)
+    val gkX: StateFlow<Double> = _gkX.asStateFlow()
+    
+    private val _gkY = MutableStateFlow(0.0)
+    val gkY: StateFlow<Double> = _gkY.asStateFlow()
+    
+    private val _gkZone = MutableStateFlow(0)
+    val gkZone: StateFlow<Int> = _gkZone.asStateFlow()
+
     // GNSS质量参数
     private var satelliteCount = 0
     private var usedSatelliteCount = 0
     private var avgSnr = 0.0f
+    private var hdop = 0.0f
+    private var vdop = 0.0f
     
     private var gpsCount = 0
     private var glonassCount = 0
     private var galileoCount = 0
     private var beidouCount = 0
     
-    // 位置缓存
     private var previousLocation: LocationData? = null
     
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -91,8 +113,67 @@ class LocationRepository(
     )
 
     /**
-     * GNSS状态回调
+     * 高斯-克吕格投影转换
+     * @param lat 纬度 (度)
+     * @param lng 经度 (度)
+     * @return Pair(x, y) 坐标 (米)
      */
+    private fun gaussKrugerProjection(lat: Double, lng: Double): Pair<Double, Double> {
+        // 计算3度带带号
+        val zone = ((lng + 1.5) / 3).toInt()
+        val centralMeridian = zone * 3.0
+        
+        // 角度转弧度
+        val latRad = Math.toRadians(lat)
+        val lngRad = Math.toRadians(lng)
+        val centralMeridianRad = Math.toRadians(centralMeridian)
+        
+        val delta = lngRad - centralMeridianRad
+        
+        // 计算辅助量
+        val sinLat = sin(latRad)
+        val cosLat = cos(latRad)
+        val tanLat = tan(latRad)
+        
+        // 计算子午线弧长
+        val e2 = E2
+        val e4 = e2 * e2
+        val e6 = e4 * e2
+        val e8 = e6 * e2
+        
+        val a = A
+        val a0 = a * (1 - e2 * (1.0/4 + e2 * (3.0/64 + e2 * (5.0/256 + e2 * 35.0/16384))))
+        val a2 = -a * (e2 * (3.0/8 + e2 * (3.0/32 + e2 * (45.0/1024 + e2 * 175.0/16384))))
+        val a4 = a * (e4 * (15.0/256 + e4 * (45.0/1024 + e4 * 525.0/16384)))
+        val a6 = -a * (e6 * (35.0/3072 + e6 * 175.0/12288))
+        val a8 = a * (e8 * 315.0/131072)
+        
+        val B = a0 * latRad + a2 * sin(2 * latRad) + a4 * sin(4 * latRad) + a6 * sin(6 * latRad) + a8 * sin(8 * latRad)
+        
+        // 计算子午线弧长
+        val N = A / sqrt(1 - e2 * sinLat * sinLat)
+        val t = tanLat
+        val eta2 = e2 / (1 - e2) * cosLat * cosLat
+        
+        // 高斯-克吕格正算公式
+        val x = B + N * t * (delta * delta / 2 + delta * delta * delta * delta / 24 * (5 - t * t + 9 * eta2 + 4 * eta2 * eta2) + 
+                delta * delta * delta * delta * delta * delta / 720 * (61 - 58 * t * t + t * t * t * t))
+        
+        val y = N * (delta + delta * delta * delta / 6 * (1 - t * t + eta2) + 
+                delta * delta * delta * delta * delta / 120 * (5 - 18 * t * t + t * t * t * t + 14 * eta2 - 58 * eta2 * t * t))
+        
+        // 添加带号
+        return Pair(x, y + zone * 1000000.0 + 500000.0)
+    }
+
+    /**
+     * 计算中央子午线
+     */
+    private fun getCentralMeridian(lng: Double): Double {
+        val zone = ((lng + 1.5) / 3).toInt()
+        return zone * 3.0
+    }
+
     private inner class GnssStatusCallback : android.location.GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
             analyzeGnssStatus(status)
@@ -112,7 +193,7 @@ class LocationRepository(
     }
 
     /**
-     * 分析GNSS卫星状态
+     * 分析GNSS卫星状态 - 估算HDOP/VDOP
      */
     private fun analyzeGnssStatus(status: android.location.GnssStatus) {
         val satelliteList = mutableListOf<SatelliteInfo>()
@@ -125,6 +206,8 @@ class LocationRepository(
         var totalSnr = 0.0f
         var validSnrCount = 0
         var usedCount = 0
+        var totalElevation = 0.0f
+        var validElevationCount = 0
         
         for (i in 0 until status.satelliteCount) {
             val prn = status.getSvid(i)
@@ -133,7 +216,11 @@ class LocationRepository(
             val elevation = status.getElevationDegrees(i)
             val usedInFix = status.usedInFix(i)
             
-            if (usedInFix) usedCount++
+            if (usedInFix) {
+                usedCount++
+                totalElevation += elevation
+                validElevationCount++
+            }
             if (snr > 0) {
                 totalSnr += snr
                 validSnrCount++
@@ -165,12 +252,28 @@ class LocationRepository(
         
         _satellites.value = satelliteList
         
-        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount, GPS=$gpsCount, 北斗=$beidouCount")
+        // 估算HDOP和VDOP
+        // 基于锁定卫星的数量和仰角分布
+        if (usedCount >= 4 && validElevationCount > 0) {
+            val avgElev = totalElevation / validElevationCount
+            
+            // 更好的卫星分布 = 更低的HDOP
+            // 仰角越高，垂直精度越好
+            val hdopFactor = 12.0f / usedCount
+            val vdopFactor = 8.0f / usedCount * (1.0f + (45.0f - avgElev) / 90.0f)
+            
+            hdop = hdopFactor.coerceIn(0.5f, 20.0f)
+            vdop = vdopFactor.coerceIn(0.5f, 20.0f)
+        } else {
+            hdop = 0f
+            vdop = 0f
+        }
+        
+        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount")
+        Log.d(TAG, "   GPS=$gpsCount, GLONASS=$glonassCount, Galileo=$galileoCount, 北斗=$beidouCount")
+        Log.d(TAG, "   SNR=${String.format("%.1f", avgSnr)}dB, HDOP=${String.format("%.1f", hdop)}, VDOP=${String.format("%.1f", vdop)}")
     }
 
-    /**
-     * 开始定位
-     */
     fun startLocationUpdates() {
         Log.d(TAG, "========== 开始定位 ==========")
         
@@ -194,13 +297,8 @@ class LocationRepository(
 
         isRunning = true
 
-        // 1. 注册GNSS回调
         registerGnssCallback()
-
-        // 2. 启动GPS监听
         startGpsListener()
-
-        // 3. 获取最后已知位置
         getLastKnownLocation()
         
         Log.d(TAG, "✅ 定位已启动")
@@ -221,11 +319,7 @@ class LocationRepository(
     private fun startGpsListener() {
         gpsListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                // ===== 关键：直接透传GPS坐标，不做任何转换 =====
-                Log.d(TAG, "📍 GPS原始坐标: lat=${location.latitude}, lng=${location.longitude}")
-                Log.d(TAG, "   精度=${location.accuracy}m, 提供者=${location.provider}")
-                
-                // 直接使用GPS坐标，不做任何修改
+                Log.d(TAG, "📍 GPS: lat=${location.latitude}, lng=${location.longitude}, acc=${location.accuracy}m")
                 handleNewLocation(location)
             }
 
@@ -334,43 +428,57 @@ class LocationRepository(
     }
 
     /**
-     * 处理定位 - 直接使用GPS坐标，不做任何转换
+     * 处理定位 - 计算高斯投影和HDOP
      */
     private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
             try {
-                Log.d(TAG, "=== 处理GPS坐标 ===")
-                Log.d(TAG, "原始纬度: ${location.latitude}")
-                Log.d(TAG, "原始经度: ${location.longitude}")
-                Log.d(TAG, "精度: ${location.accuracy}m")
-                Log.d(TAG, "提供者: ${location.provider}")
+                val lat = location.latitude
+                val lng = location.longitude
                 
-                // 直接使用GPS坐标，不做任何转换或修改
+                Log.d(TAG, "=== 处理GPS坐标 ===")
+                Log.d(TAG, "纬度: $lat, 经度: $lng")
+                
+                // 1. 计算高斯-克吕格投影坐标
+                val (gkX, gkY) = gaussKrugerProjection(lat, lng)
+                val zone = ((lng + 1.5) / 3).toInt()
+                
+                _gkX.value = gkX
+                _gkY.value = gkY
+                _gkZone.value = zone
+                
+                Log.d(TAG, "高斯投影: X=$gkX, Y=$gkY, 带号=$zone")
+                
+                // 2. 获取方向 (只有速度>0时才有意义)
+                val bearing = if (location.speed > 0.5f) location.bearing else 0f
+
+                // 3. 创建定位数据
                 val locationData = LocationData(
-                    latitude = location.latitude,   // 直接透传
-                    longitude = location.longitude, // 直接透传
+                    latitude = lat,
+                    longitude = lng,
                     altitude = location.altitude,
                     accuracy = location.accuracy,
                     speed = location.speed,
-                    bearing = location.bearing,
+                    bearing = bearing,
                     time = location.time,
                     provider = location.provider ?: "gps",
                     satelliteCount = satelliteCount,
-                    hdop = 0f,  // 暂时不处理HDOP
-                    pdop = 0f,
-                    vdop = 0f,
+                    hdop = hdop,
+                    pdop = hdop * 1.5f,  // PDOP ≈ HDOP * 1.5
+                    vdop = vdop,
                     snr = avgSnr,
-                    quality = LocationQuality.GOOD
+                    quality = evaluateQuality()
                 )
 
                 // 更新状态
                 _currentLocation.value = locationData
                 previousLocation = locationData
                 
-                Log.d(TAG, "✅ 坐标已更新: lat=${locationData.latitude}, lng=${locationData.longitude}")
+                Log.d(TAG, "✅ 坐标已更新: lat=$lat, lng=$lng")
+                Log.d(TAG, "   HDOP=$hdop, VDOP=$vdop, 卫星=$usedSatelliteCount")
 
                 // 获取地址
-                fetchLocationName(locationData.latitude, locationData.longitude)
+                fetchLocationName(lat, lng)
                 
                 // 保存数据
                 saveLocationToDatabase(locationData)
@@ -382,6 +490,19 @@ class LocationRepository(
             } catch (e: Exception) {
                 Log.e(TAG, "处理定位异常: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * 评估定位质量
+     */
+    private fun evaluateQuality(): LocationQuality {
+        return when {
+            hdop < 1.0f && usedSatelliteCount >= 8 -> LocationQuality.EXCELLENT
+            hdop < 2.0f && usedSatelliteCount >= 6 -> LocationQuality.GOOD
+            hdop < 4.0f && usedSatelliteCount >= 4 -> LocationQuality.FAIR
+            usedSatelliteCount >= 3 -> LocationQuality.POOR
+            else -> LocationQuality.BAD
         }
     }
 

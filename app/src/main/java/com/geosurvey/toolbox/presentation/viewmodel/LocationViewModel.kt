@@ -1,6 +1,7 @@
 package com.geosurvey.toolbox.presentation.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.geosurvey.toolbox.data.database.AppDatabase
@@ -19,6 +20,10 @@ import kotlinx.coroutines.launch
  * 定位ViewModel
  */
 class LocationViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        private const val TAG = "LocationViewModel"
+    }
+
     private val database = AppDatabase.getDatabase(application)
     private val locationRepository = LocationRepository(application, database.locationDao())
 
@@ -33,12 +38,15 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     val trackPoints = locationRepository.trackPoints
 
     init {
+        Log.d(TAG, "LocationViewModel initialized")
+
         // 自动开始定位
         locationRepository.startLocationUpdates()
 
         // 监听定位变化，更新UI状态
         viewModelScope.launch {
             locationRepository.currentLocation.collect { location ->
+                Log.d(TAG, "Location updated in ViewModel: $location")
                 location?.let {
                     _uiState.value = _uiState.value.copy(
                         location = it,
@@ -62,6 +70,15 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
                 )
             }
         }
+    }
+
+    /**
+     * 重新开始定位（用于手动刷新）
+     */
+    fun restartLocation() {
+        Log.d(TAG, "Restarting location updates")
+        locationRepository.stopLocationUpdates()
+        locationRepository.startLocationUpdates()
     }
 
     /**

@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.geosurvey.toolbox.data.database.AppDatabase
+import com.geosurvey.toolbox.data.database.TrackEntity
 import com.geosurvey.toolbox.data.repository.LocationRepository
 import com.geosurvey.toolbox.domain.model.LocationData
+import com.geosurvey.toolbox.domain.model.LocationQuality
 import com.geosurvey.toolbox.domain.model.SatelliteInfo
 import com.geosurvey.toolbox.domain.util.LocationQualityEvaluator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +17,6 @@ import kotlinx.coroutines.launch
 
 /**
  * 定位ViewModel
- * 管理定位相关的UI状态
  */
 class LocationViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
@@ -50,6 +51,15 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
                         snr = it.snr
                     )
                 }
+            }
+        }
+
+        // 监听卫星变化
+        viewModelScope.launch {
+            locationRepository.satellites.collect { satelliteList ->
+                _uiState.value = _uiState.value.copy(
+                    satelliteCount = satelliteList.size
+                )
             }
         }
     }
@@ -94,11 +104,11 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
  */
 data class LocationUiState(
     val location: LocationData? = null,
-    val quality: com.geosurvey.toolbox.domain.model.LocationQuality = com.geosurvey.toolbox.domain.model.LocationQuality.UNKNOWN,
+    val quality: LocationQuality = LocationQuality.UNKNOWN,
     val qualityText: String = "未知",
     val satelliteCount: Int = 0,
     val hdop: Float = 0f,
     val snr: Float = 0f,
     val isRecording: Boolean = false,
-    val tracks: List<com.geosurvey.toolbox.data.database.TrackEntity> = emptyList()
+    val tracks: List<TrackEntity> = emptyList()
 )

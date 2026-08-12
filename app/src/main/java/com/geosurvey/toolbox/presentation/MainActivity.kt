@@ -110,18 +110,6 @@ fun MainScreen(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: Screen.Home.route
 
-    // 权限管理
-    val fineLocationPermissionState = rememberPermissionState(
-        Manifest.permission.ACCESS_FINE_LOCATION
-    )
-
-    // 检查并请求权限
-    LaunchedEffect(Unit) {
-        if (!fineLocationPermissionState.status.isGranted) {
-            fineLocationPermissionState.launchPermissionRequest()
-        }
-    }
-
     Scaffold(
         bottomBar = {
             GlassBottomNavigation(
@@ -232,7 +220,7 @@ fun GlassBottomNavigation(
     }
 }
 
-// --- 6. 预览窗口（修复点击展开） ---
+// --- 6. 预览窗口 ---
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PreviewWindow(
@@ -293,7 +281,7 @@ fun PreviewWindow(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // 标题行 - 点击标题也会触发展开
+                // 标题行
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -341,6 +329,7 @@ fun PreviewWindow(
 }
 
 // --- 7. HomeScreen（带定位功能） ---
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun HomeScreen(state: HomeScreenState) {
     val viewModel: LocationViewModel = viewModel()
@@ -354,13 +343,6 @@ fun HomeScreen(state: HomeScreenState) {
     val fineLocationPermissionState = rememberPermissionState(
         Manifest.permission.ACCESS_FINE_LOCATION
     )
-
-    // 检查并请求权限
-    LaunchedEffect(Unit) {
-        if (!fineLocationPermissionState.status.isGranted) {
-            fineLocationPermissionState.launchPermissionRequest()
-        }
-    }
 
     // 检查GPS是否开启
     val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager

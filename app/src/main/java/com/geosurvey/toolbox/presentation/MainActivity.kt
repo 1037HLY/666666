@@ -16,23 +16,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.*
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavHostController
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.geosurvey.toolbox.R
-import kotlinx.coroutines.delay
 
 // --- 1. 定义导航路由 ---
 sealed class Screen(val route: String) {
@@ -50,9 +47,8 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFFF0F4F8) // 浅色背景
+                    color = Color(0xFFF0F4F8)
                 ) {
-                    // 为每个页面创建独立的状态，避免切换时重置
                     val homeState = remember { HomeScreenState() }
                     val analysisState = remember { AnalysisScreenState() }
                     val recordState = remember { RecordScreenState() }
@@ -70,7 +66,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- 3. 页面状态类 (管理每个窗口的展开/折叠) ---
+// --- 3. 页面状态类 ---
 class HomeScreenState {
     var isPreview1Expanded by mutableStateOf(false)
     var isPreview2Expanded by mutableStateOf(false)
@@ -93,7 +89,7 @@ class CameraScreenState {
     var isPreview2Expanded by mutableStateOf(false)
 }
 
-// --- 4. 主界面：导航栏 + 内容区域 ---
+// --- 4. 主界面 ---
 @Composable
 fun MainScreen(
     homeState: HomeScreenState,
@@ -107,7 +103,6 @@ fun MainScreen(
 
     Scaffold(
         bottomBar = {
-            // 液态玻璃风格导航栏
             GlassBottomNavigation(
                 currentRoute = currentRoute,
                 onTabSelected = { screen ->
@@ -119,7 +114,7 @@ fun MainScreen(
                 }
             )
         },
-        containerColor = Color.Transparent // 让Scaffold透明，显示背景
+        containerColor = Color.Transparent
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             NavHost(
@@ -144,17 +139,18 @@ fun MainScreen(
     }
 }
 
-// --- 5. 底部导航栏 (液态玻璃风格) ---
+// --- 5. 底部导航栏 ---
 @Composable
 fun GlassBottomNavigation(
     currentRoute: String,
     onTabSelected: (Screen) -> Unit
 ) {
+    // 定义导航项：使用 Triple 存储 (Screen, Icon, Label)
     val items = listOf(
-        Screen.Home to Icons.Default.GpsFixed to stringResource(R.string.nav_home),
-        Screen.Analysis to Icons.Default.Analytics to stringResource(R.string.nav_analysis),
-        Screen.Record to Icons.Default.List to stringResource(R.string.nav_record),
-        Screen.Camera to Icons.Default.PhotoCamera to stringResource(R.string.nav_camera)
+        Triple(Screen.Home, Icons.Default.GpsFixed, stringResource(R.string.nav_home)),
+        Triple(Screen.Analysis, Icons.Default.Analytics, stringResource(R.string.nav_analysis)),
+        Triple(Screen.Record, Icons.Default.List, stringResource(R.string.nav_record)),
+        Triple(Screen.Camera, Icons.Default.PhotoCamera, stringResource(R.string.nav_camera))
     )
 
     NavigationBar(
@@ -174,15 +170,6 @@ fun GlassBottomNavigation(
                         Color.White.copy(alpha = 0.6f)
                     )
                 ),
-                shape = RoundedCornerShape(32.dp)
-            )
-            .drawBehind {
-                // 模拟边缘暗化：绘制一个半透明黑边
-                // 简单起见，我们通过外发光阴影来实现，这里不额外绘制
-            }
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(32.dp)
             ),
         containerColor = Color.Transparent,
@@ -213,7 +200,7 @@ fun GlassBottomNavigation(
                     selectedTextColor = Color(0xFF0EA5E9),
                     unselectedIconColor = Color.Gray,
                     unselectedTextColor = Color.Gray,
-                    indicatorColor = Color.Transparent // 去掉默认指示器，我们自己控制高亮
+                    indicatorColor = Color.Transparent
                 ),
                 modifier = Modifier
                     .background(
@@ -225,7 +212,7 @@ fun GlassBottomNavigation(
     }
 }
 
-// --- 6. 可复用的液态玻璃卡片 ---
+// --- 6. 液态玻璃卡片 ---
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -248,11 +235,6 @@ fun GlassCard(
                         Color.White.copy(alpha = 0.5f)
                     )
                 ),
-                shape = RoundedCornerShape(24.dp)
-            )
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.7f),
                 shape = RoundedCornerShape(24.dp)
             )
     ) {
@@ -284,7 +266,8 @@ fun GlassCard(
     }
 }
 
-// --- 7. 预览窗口（通用）---
+// --- 7. 预览窗口 ---
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PreviewWindow(
     title: String,
@@ -292,7 +275,7 @@ fun PreviewWindow(
     isExpanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
-    expandedContent: @Composable (() -> Unit)? = null // 展开后显示的内容
+    expandedContent: @Composable (() -> Unit)? = null
 ) {
     GlassCard(
         modifier = modifier
@@ -352,7 +335,7 @@ fun PreviewWindow(
     }
 }
 
-// --- 8. 页面实现：HomeScreen ---
+// --- 8. HomeScreen ---
 @Composable
 fun HomeScreen(state: HomeScreenState) {
     Column(
@@ -361,7 +344,6 @@ fun HomeScreen(state: HomeScreenState) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 窗口1：预览窗口（GPS信息）
         PreviewWindow(
             title = "GPS 定位",
             subtitle = "GPS窗口，功能后续开发",
@@ -369,7 +351,6 @@ fun HomeScreen(state: HomeScreenState) {
             onToggle = { state.isPreview1Expanded = !state.isPreview1Expanded },
             modifier = Modifier.weight(1f),
             expandedContent = {
-                // 大窗口内容（占位）
                 Column {
                     Text("纬度: 0.000000°", fontSize = 16.sp)
                     Text("经度: 0.000000°", fontSize = 16.sp)
@@ -379,7 +360,6 @@ fun HomeScreen(state: HomeScreenState) {
             }
         )
 
-        // 窗口2：预览窗口（卫星和轨迹）
         PreviewWindow(
             title = "卫星与轨迹",
             subtitle = "上:卫星极坐标图，下:卫星信息窗口",
@@ -411,7 +391,6 @@ fun HomeScreen(state: HomeScreenState) {
             }
         )
 
-        // 窗口3：预览窗口（轨迹）
         PreviewWindow(
             title = "轨迹与导航",
             subtitle = "上:实时轨迹，下:轨迹导航",
@@ -445,7 +424,7 @@ fun HomeScreen(state: HomeScreenState) {
     }
 }
 
-// --- 9. 页面实现：AnalysisScreen ---
+// --- 9. AnalysisScreen ---
 @Composable
 fun AnalysisScreen(state: AnalysisScreenState) {
     Column(
@@ -460,7 +439,9 @@ fun AnalysisScreen(state: AnalysisScreenState) {
             isExpanded = state.isPreview1Expanded,
             onToggle = { state.isPreview1Expanded = !state.isPreview1Expanded },
             modifier = Modifier.weight(1f),
-            expandedContent = { Text("倾向: 0°, 倾角: 0°") }
+            expandedContent = {
+                Text("倾向: 0°, 倾角: 0°")
+            }
         )
         PreviewWindow(
             title = "赤平投影 & 玫瑰花图",
@@ -470,9 +451,25 @@ fun AnalysisScreen(state: AnalysisScreenState) {
             modifier = Modifier.weight(1f),
             expandedContent = {
                 Column {
-                    Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("🔴 赤平投影") }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🔴 赤平投影")
+                    }
                     Spacer(Modifier.height(8.dp))
-                    Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("🌹 玫瑰花图") }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🌹 玫瑰花图")
+                    }
                 }
             }
         )
@@ -484,16 +481,32 @@ fun AnalysisScreen(state: AnalysisScreenState) {
             modifier = Modifier.weight(1f),
             expandedContent = {
                 Column {
-                    Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("📐 钻孔计算") }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("📐 钻孔计算")
+                    }
                     Spacer(Modifier.height(8.dp))
-                    Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("📊 钻孔绘制") }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("📊 钻孔绘制")
+                    }
                 }
             }
         )
     }
 }
 
-// --- 10. 页面实现：RecordScreen ---
+// --- 10. RecordScreen ---
 @Composable
 fun RecordScreen(state: RecordScreenState) {
     Column(
@@ -508,7 +521,9 @@ fun RecordScreen(state: RecordScreenState) {
             isExpanded = state.isPreview1Expanded,
             onToggle = { state.isPreview1Expanded = !state.isPreview1Expanded },
             modifier = Modifier.weight(1f),
-            expandedContent = { Text("📋 普通样本列表") }
+            expandedContent = {
+                Text("📋 普通样本列表")
+            }
         )
         PreviewWindow(
             title = "钻孔样本",
@@ -516,12 +531,14 @@ fun RecordScreen(state: RecordScreenState) {
             isExpanded = state.isPreview2Expanded,
             onToggle = { state.isPreview2Expanded = !state.isPreview2Expanded },
             modifier = Modifier.weight(1f),
-            expandedContent = { Text("🕳️ 钻孔样本列表") }
+            expandedContent = {
+                Text("🕳️ 钻孔样本列表")
+            }
         )
     }
 }
 
-// --- 11. 页面实现：CameraScreen ---
+// --- 11. CameraScreen ---
 @Composable
 fun CameraScreen(state: CameraScreenState) {
     Column(
@@ -536,7 +553,9 @@ fun CameraScreen(state: CameraScreenState) {
             isExpanded = state.isPreview1Expanded,
             onToggle = { state.isPreview1Expanded = !state.isPreview1Expanded },
             modifier = Modifier.weight(1f),
-            expandedContent = { Text("📷 相机预览 + 水印设置") }
+            expandedContent = {
+                Text("📷 相机预览 + 水印设置")
+            }
         )
         PreviewWindow(
             title = "相册",
@@ -544,12 +563,14 @@ fun CameraScreen(state: CameraScreenState) {
             isExpanded = state.isPreview2Expanded,
             onToggle = { state.isPreview2Expanded = !state.isPreview2Expanded },
             modifier = Modifier.weight(1f),
-            expandedContent = { Text("🖼️ 图片列表") }
+            expandedContent = {
+                Text("🖼️ 图片列表")
+            }
         )
     }
 }
 
-// --- 12. 预览 (可选) ---
+// --- 12. 预览 ---
 @Preview(showBackground = true)
 @Composable
 fun PreviewMainScreen() {

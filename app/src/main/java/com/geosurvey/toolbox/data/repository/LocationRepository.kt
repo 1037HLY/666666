@@ -3,10 +3,13 @@ package com.geosurvey.toolbox.data.repository
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Criteria
 import android.location.GnssStatus
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -18,21 +21,18 @@ import com.geosurvey.toolbox.domain.model.LocationData
 import com.geosurvey.toolbox.domain.model.LocationQuality
 import com.geosurvey.toolbox.domain.model.SatelliteInfo
 import com.geosurvey.toolbox.domain.util.KalmanFilter2D
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.*
 import java.util.Locale
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 /**
- * 高精度GNSS定位仓库 - 强制GPS版本
+ * 纯GPS定位仓库 - 直接使用Android GPS API
+ * 不依赖Google Fused Location
  */
 class LocationRepository(
     private val context: Context,
@@ -47,12 +47,10 @@ class LocationRepository(
         private const val CHINA_LNG_MIN = 73.0
         private const val CHINA_LNG_MAX = 135.0
         
-        private const val SNR_THRESHOLD_MIN = 15.0f
-        private const val DRIFT_THRESHOLD = 50.0f
-    }
-
-    private val fusedLocationClient: FusedLocationProviderClient by lazy {
-        LocationServices.getFusedLocationProviderClient(context)
+        // 有效GPS判定标准
+        private const val MIN_SATELLITES_FOR_FIX = 4
+        private const val MIN_SNR_FOR_VALID = 20.0f
+        private const val MAX_ACCURACY_FOR_VALID = 50.0f
     }
 
     private val locationManager: LocationManager by lazy {
@@ -83,7 +81,7 @@ class LocationRepository(
     private val _detailedAddress = MutableStateFlow<DetailedAddress?>(null)
     val detailedAddress: StateFlow<DetailedAddress?> = _detailedAddress.asStateFlow()
 
-    // GNSS质量参数
+    // GNSS质量参数 - 从卫星状态读取
     private var hdop = 0.0f
     private var vdop = 0.0f
     private var pdop = 0.0f
@@ -92,26 +90,27 @@ class LocationRepository(
     private var avgSnr = 0.0f
     private var maxSnr = 0.0f
     
+    // 分系统统计
     private var gpsCount = 0
     private var glonassCount = 0
     private var galileoCount = 0
     private var beidouCount = 0
 
+    // 位置缓存
     private var lastValidLocation: LocationData? = null
     private var previousLocation: LocationData? = null
     private var isMoving = false
     
+    // 状态
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isRunning = false
-    private var locationCount = 0
-
-    private var gnssStatusCallback: GnssStatusCallback? = null
-    private var locationCallback: LocationCallback? = null
-
-    private var lastGpsTime = 0L
     private var hasGpsFix = false
-    private var firstValidLocationReceived = false
-    private var realGpsCount = 0
+    private var firstValidFix = false
+    private var gpsLockAttempts = 0
+    
+    // GPS监听器
+    private var gpsListener: LocationListener? = null
+    private var gnssCallback: GnssStatusCallback? = null
 
     data class DetailedAddress(
         val fullAddress: String = "",
@@ -125,25 +124,32 @@ class LocationRepository(
         val postalCode: String = ""
     )
 
+    /**
+     * GNSS状态回调
+     */
     private inner class GnssStatusCallback : android.location.GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
             analyzeGnssStatus(status)
         }
 
         override fun onFirstFix(ttffMillis: Int) {
-            Log.d(TAG, "✅✅✅ 首次GPS定位成功! 耗时: ${ttffMillis}ms ✅✅✅")
+            Log.d(TAG, "🎯🎯🎯 GPS首次定位成功! 耗时: ${ttffMillis}ms")
             hasGpsFix = true
+            firstValidFix = true
         }
 
         override fun onStarted() {
-            Log.d(TAG, "✅ GNSS定位开始")
+            Log.d(TAG, "📡 GNSS定位引擎启动")
         }
 
         override fun onStopped() {
-            Log.d(TAG, "⏹ GNSS定位停止")
+            Log.d(TAG, "📡 GNSS定位引擎停止")
         }
     }
 
+    /**
+     * 分析GNSS卫星状态 - 从原始数据读取HDOP/VDOP
+     */
     private fun analyzeGnssStatus(status: android.location.GnssStatus) {
         val satelliteList = mutableListOf<SatelliteInfo>()
         
@@ -156,6 +162,8 @@ class LocationRepository(
         var validSnrCount = 0
         var usedCount = 0
         var highSnrCount = 0
+        var totalElevation = 0.0f
+        var validElevationCount = 0
         
         for (i in 0 until status.satelliteCount) {
             val prn = status.getSvid(i)
@@ -164,11 +172,15 @@ class LocationRepository(
             val elevation = status.getElevationDegrees(i)
             val usedInFix = status.usedInFix(i)
             
-            if (usedInFix) usedCount++
+            if (usedInFix) {
+                usedCount++
+                totalElevation += elevation
+                validElevationCount++
+            }
             if (snr > 0) {
                 totalSnr += snr
                 validSnrCount++
-                if (snr > 20) highSnrCount++
+                if (snr > MIN_SNR_FOR_VALID) highSnrCount++
             }
             
             val constellation = when (status.getConstellationType(i)) {
@@ -196,16 +208,36 @@ class LocationRepository(
         avgSnr = if (validSnrCount > 0) totalSnr / validSnrCount else 0f
         maxSnr = satelliteList.maxOfOrNull { it.snr } ?: 0f
         
+        // 估算HDOP/VDOP - 基于卫星分布
+        // 真正的HDOP需要从GnssStatus中读取，但Android API没有直接提供
+        // 这里使用卫星数量和仰角分布来估算
+        if (usedCount >= 4 && validElevationCount > 0) {
+            val avgElev = totalElevation / validElevationCount
+            // 粗略估算: 卫星越多、仰角越高，HDOP越小
+            hdop = (10.0f / usedCount) * (1.0f + (45.0f - avgElev) / 90.0f)
+            hdop = hdop.coerceIn(0.5f, 20.0f)
+            vdop = hdop * 0.8f
+            pdop = sqrt((hdop * hdop + vdop * vdop).toDouble()).toFloat()
+        } else {
+            hdop = 0f
+            vdop = 0f
+            pdop = 0f
+        }
+        
         _satellites.value = satelliteList
         
-        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount, 高信噪比(>20dB)=$highSnrCount")
+        Log.d(TAG, "🛰️ 卫星状态: 总数=$satelliteCount, 锁定=$usedCount")
         Log.d(TAG, "   GPS=$gpsCount, GLONASS=$glonassCount, Galileo=$galileoCount, 北斗=$beidouCount")
-        Log.d(TAG, "   SNR平均=${String.format("%.1f", avgSnr)}dB, 最大=${String.format("%.1f", maxSnr)}dB")
+        Log.d(TAG, "   SNR平均=${String.format("%.1f", avgSnr)}dB, 高信噪比=$highSnrCount")
+        Log.d(TAG, "   HDOP=${String.format("%.1f", hdop)}, VDOP=${String.format("%.1f", vdop)}")
     }
 
+    /**
+     * 开始定位 - 纯GPS模式
+     */
     fun startLocationUpdates() {
         Log.d(TAG, "========================================")
-        Log.d(TAG, "🔴 开始高精度GNSS定位")
+        Log.d(TAG, "🚀 启动纯GPS定位引擎")
         Log.d(TAG, "========================================")
         
         if (isRunning) {
@@ -219,42 +251,41 @@ class LocationRepository(
         }
 
         val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-        Log.d(TAG, "📡 GPS硬件状态: ${if (isGpsEnabled) "已开启 ✅" else "未开启 ❌"}")
+        Log.d(TAG, "📡 GPS硬件状态: ${if (isGpsEnabled) "✅ 已开启" else "❌ 未开启"}")
         
         if (!isGpsEnabled) {
-            Log.e(TAG, "❌ GPS未开启! 请打开手机GPS")
+            Log.e(TAG, "❌❌❌ GPS未开启! 请在手机设置中打开位置服务")
             return
         }
 
         isRunning = true
-        locationCount = 0
         hasGpsFix = false
-        firstValidLocationReceived = false
+        firstValidFix = false
+        gpsLockAttempts = 0
         lastValidLocation = null
         previousLocation = null
-        realGpsCount = 0
 
-        // 1. 注册GNSS回调
+        // 1. 注册GNSS状态回调
         registerGnssCallback()
 
-        // 2. 强制启动GPS (使用最高频率)
-        startNativeGpsUpdates()
+        // 2. 启动GPS监听 - 使用最短间隔
+        startGpsListener()
 
-        // 3. 启动Fused作为备选
-        startFusedUpdates()
-
-        // 4. 获取最后已知位置
+        // 3. 尝试获取最后已知位置
         getLastKnownLocation()
         
-        Log.d(TAG, "✅ 定位服务已启动，等待GPS锁定...")
-        Log.d(TAG, "⏳ 请到室外开阔地带，GPS锁定可能需要30-60秒")
+        Log.d(TAG, "✅ GPS定位已启动，等待卫星锁定...")
+        Log.d(TAG, "⏱️ 室外首次锁定通常需要30-60秒")
     }
 
+    /**
+     * 注册GNSS回调
+     */
     private fun registerGnssCallback() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
-                gnssStatusCallback = GnssStatusCallback()
-                locationManager.registerGnssStatusCallback(gnssStatusCallback!!, null)
+                gnssCallback = GnssStatusCallback()
+                locationManager.registerGnssStatusCallback(gnssCallback!!, null)
                 Log.d(TAG, "✅ GNSS回调已注册")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ 注册GNSS回调失败: ${e.message}")
@@ -262,15 +293,50 @@ class LocationRepository(
         }
     }
 
-    private fun startNativeGpsUpdates() {
+    /**
+     * 启动GPS监听器
+     */
+    private fun startGpsListener() {
+        gpsListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                // 验证这是真实的GPS定位
+                if (location.provider == LocationManager.GPS_PROVIDER) {
+                    Log.d(TAG, "📍📍📍 GPS定位: lat=${location.latitude}, lng=${location.longitude}, acc=${location.accuracy}m")
+                    
+                    // 检查是否为有效定位
+                    if (isValidGpsLocation(location)) {
+                        if (!firstValidFix) {
+                            firstValidFix = true
+                            Log.d(TAG, "🎉🎉🎉 首次有效GPS定位!")
+                        }
+                        handleNewLocation(location)
+                    } else {
+                        Log.d(TAG, "⚠️ GPS定位无效: 精度=${location.accuracy}m, 卫星数=$usedSatelliteCount")
+                    }
+                }
+            }
+
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+                Log.d(TAG, "GPS状态: $status")
+            }
+
+            override fun onProviderEnabled(provider: String) {
+                Log.d(TAG, "GPS已启用")
+            }
+
+            override fun onProviderDisabled(provider: String) {
+                Log.d(TAG, "GPS已禁用")
+            }
+        }
+
         try {
             // 使用最短更新间隔强制GPS
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
-                    500,   // 0.5秒
-                    0f,    // 最小距离0
-                    nativeGpsCallback,
+                    500,
+                    0f,
+                    gpsListener!!,
                     Looper.getMainLooper()
                 )
             } else {
@@ -279,115 +345,88 @@ class LocationRepository(
                     LocationManager.GPS_PROVIDER,
                     500,
                     0f,
-                    nativeGpsCallback
+                    gpsListener!!
                 )
             }
-            Log.d(TAG, "✅ 原生GPS已启动 (500ms间隔)")
+            Log.d(TAG, "✅ GPS监听已启动 (间隔500ms)")
         } catch (e: SecurityException) {
-            Log.e(TAG, "❌ 原生GPS启动失败: ${e.message}")
+            Log.e(TAG, "❌ GPS监听启动失败: ${e.message}")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ 原生GPS异常: ${e.message}")
+            Log.e(TAG, "❌ GPS监听异常: ${e.message}")
         }
     }
 
-    private val nativeGpsCallback = object : android.location.LocationListener {
-        override fun onLocationChanged(location: Location) {
-            if (location.provider == LocationManager.GPS_PROVIDER || location.provider == "gps") {
-                realGpsCount++
-                Log.d(TAG, "📍📍📍 真实GPS #$realGpsCount: lat=${location.latitude}, lng=${location.longitude}, acc=${location.accuracy}m")
-                handleNewLocation(location, isGpsSource = true)
-            }
+    /**
+     * 验证GPS定位是否有效
+     */
+    private fun isValidGpsLocation(location: Location): Boolean {
+        // 1. 精度检查
+        if (location.accuracy > MAX_ACCURACY_FOR_VALID) {
+            Log.d(TAG, "精度过低: ${location.accuracy}m > ${MAX_ACCURACY_FOR_VALID}m")
+            return false
         }
-
-        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {
-            Log.d(TAG, "GPS状态变化: $status")
+        
+        // 2. 卫星数检查
+        if (usedSatelliteCount < MIN_SATELLITES_FOR_FIX) {
+            Log.d(TAG, "卫星数不足: $usedSatelliteCount < $MIN_SATELLITES_FOR_FIX")
+            return false
         }
-
-        override fun onProviderEnabled(provider: String) {
-            Log.d(TAG, "GPS已启用")
+        
+        // 3. 信噪比检查
+        if (avgSnr < MIN_SNR_FOR_VALID && usedSatelliteCount < 6) {
+            Log.d(TAG, "信噪比过低: ${String.format("%.1f", avgSnr)}dB < ${MIN_SNR_FOR_VALID}dB")
+            return false
         }
-
-        override fun onProviderDisabled(provider: String) {
-            Log.d(TAG, "GPS已禁用")
+        
+        // 4. 坐标合理性检查 - 在中国范围内
+        val lat = location.latitude
+        val lng = location.longitude
+        if (lat in CHINA_LAT_MIN..CHINA_LAT_MAX && lng in CHINA_LNG_MIN..CHINA_LNG_MAX) {
+            return true
         }
+        
+        Log.d(TAG, "坐标不在中国范围内: ($lat, $lng)")
+        return false
     }
 
-    private fun startFusedUpdates() {
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { location ->
-                    // 只有在没有GPS定位时才使用Fused
-                    if (!hasGpsFix || (System.currentTimeMillis() - lastGpsTime > 5000)) {
-                        Log.d(TAG, "📡 Fused辅助: lat=${location.latitude}, lng=${location.longitude}")
-                        handleNewLocation(location, isGpsSource = false)
-                    }
-                }
-            }
-        }
-
-        try {
-            val request = LocationRequest.Builder(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                2000
-            )
-                .setMinUpdateDistanceMeters(1.0f)
-                .setMinUpdateIntervalMillis(2000)
-                .build()
-
-            fusedLocationClient.requestLocationUpdates(
-                request,
-                locationCallback!!,
-                Looper.getMainLooper()
-            )
-            Log.d(TAG, "✅ Fused定位已启动")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "❌ Fused启动失败: ${e.message}")
-        }
-    }
-
+    /**
+     * 获取最后一次已知位置
+     */
     private fun getLastKnownLocation() {
         try {
             val gpsLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            if (gpsLocation != null) {
-                Log.d(TAG, "📍 最后GPS: lat=${gpsLocation.latitude}, lng=${gpsLocation.longitude}")
-                handleNewLocation(gpsLocation, isGpsSource = true)
-                return
-            }
-            
-            val networkLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            if (networkLocation != null) {
-                Log.d(TAG, "📍 最后网络: lat=${networkLocation.latitude}, lng=${networkLocation.longitude}")
-                handleNewLocation(networkLocation, isGpsSource = false)
+            if (gpsLocation != null && isValidGpsLocation(gpsLocation)) {
+                Log.d(TAG, "📍 最后有效GPS: lat=${gpsLocation.latitude}, lng=${gpsLocation.longitude}")
+                handleNewLocation(gpsLocation)
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "获取最后位置失败: ${e.message}")
         }
     }
 
+    /**
+     * 停止定位
+     */
     fun stopLocationUpdates() {
         if (!isRunning) return
 
         isRunning = false
         
-        try {
-            locationManager.removeUpdates(nativeGpsCallback)
-        } catch (e: Exception) { }
-        
-        locationCallback?.let {
+        gpsListener?.let {
             try {
-                fusedLocationClient.removeLocationUpdates(it)
+                locationManager.removeUpdates(it)
             } catch (e: Exception) { }
         }
-        locationCallback = null
+        gpsListener = null
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
-                gnssStatusCallback?.let {
+                gnssCallback?.let {
                     locationManager.unregisterGnssStatusCallback(it)
                 }
             } catch (e: Exception) { }
         }
-        gnssStatusCallback = null
+        gnssCallback = null
         
         Log.d(TAG, "定位已停止")
     }
@@ -421,76 +460,94 @@ class LocationRepository(
         }
     }
 
-    private fun handleNewLocation(location: Location, isGpsSource: Boolean) {
+    /**
+     * 处理新的GPS定位
+     */
+    private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
             try {
-                locationCount++
                 val lat = location.latitude
                 val lng = location.longitude
                 
-                Log.d(TAG, "处理定位 #$locationCount: ($lat, $lng), GPS=$isGpsSource, acc=${location.accuracy}m")
+                Log.d(TAG, "处理GPS: lat=$lat, lng=$lng, acc=${location.accuracy}m")
 
-                // 如果是GPS定位，标记为已获取GPS
-                if (isGpsSource) {
-                    hasGpsFix = true
-                    lastGpsTime = location.time
-                    
-                    // 检查坐标是否在中国范围内
-                    if (lat in CHINA_LAT_MIN..CHINA_LAT_MAX && lng in CHINA_LNG_MIN..CHINA_LNG_MAX) {
-                        if (!firstValidLocationReceived) {
-                            firstValidLocationReceived = true
-                            Log.d(TAG, "🎉🎉🎉 首次有效GPS定位! lat=$lat, lng=$lng")
+                // 漂移检测
+                previousLocation?.let { prev ->
+                    val distance = calculateDistance(
+                        prev.latitude, prev.longitude,
+                        lat, lng
+                    )
+                    val timeDiff = (location.time - prev.time) / 1000.0
+                    if (timeDiff > 0) {
+                        val speedMs = distance / timeDiff
+                        if (speedMs > 100.0) {
+                            Log.w(TAG, "⚠️ 异常跳点: ${String.format("%.1f", speedMs)}m/s, 丢弃")
+                            return@launch
                         }
-                    } else {
-                        Log.w(TAG, "⚠️ GPS坐标不在中国范围内: ($lat, $lng)，可能还未锁定卫星")
-                        // 不丢弃，继续处理
-                    }
-                } else {
-                    // 非GPS定位，只在没有GPS时使用
-                    if (hasGpsFix && System.currentTimeMillis() - lastGpsTime < 10000) {
-                        Log.d(TAG, "GPS有效，忽略Fused/网络定位")
-                        return@launch
                     }
                 }
 
-                // 质量评估
-                val currentHdop = if (hasGpsFix) hdop else location.accuracy
-                val currentVdop = if (hasGpsFix) vdop else location.accuracy * 1.2f
+                // 判断运动状态
+                isMoving = location.speed > 0.5f
+
+                // Kalman滤波
+                val (filteredLat, filteredLng) = kalmanFilterLat.update(lat, lng)
 
                 // 创建定位数据
-                val rawLocation = createLocationData(location)
-                val (filteredLat, filteredLng) = kalmanFilterLat.update(
-                    rawLocation.latitude,
-                    rawLocation.longitude
-                )
-
-                val filteredLocation = rawLocation.copy(
+                val egmOffset = getEGMOffset(filteredLat, filteredLng)
+                val quality = evaluateQuality()
+                
+                val locationData = LocationData(
                     latitude = filteredLat,
                     longitude = filteredLng,
-                    hdop = currentHdop,
-                    vdop = currentVdop,
+                    altitude = location.altitude + egmOffset,
+                    accuracy = location.accuracy,
+                    speed = location.speed,
+                    bearing = location.bearing,
+                    time = location.time,
+                    provider = "gps",
                     satelliteCount = satelliteCount,
+                    hdop = hdop,
+                    pdop = pdop,
+                    vdop = vdop,
                     snr = avgSnr,
-                    quality = if (isGpsSource && hasGpsFix) LocationQuality.GOOD else LocationQuality.FAIR
+                    quality = quality
                 )
 
-                _currentLocation.value = filteredLocation
-                lastValidLocation = filteredLocation
-                previousLocation = filteredLocation
+                // 更新状态
+                _currentLocation.value = locationData
+                lastValidLocation = locationData
+                previousLocation = locationData
                 
                 Log.d(TAG, "✅ 位置已更新: lat=${String.format("%.6f", filteredLat)}, lng=${String.format("%.6f", filteredLng)}")
+                Log.d(TAG, "   质量: $quality, HDOP=${String.format("%.1f", hdop)}, 卫星=$usedSatelliteCount")
 
                 // 获取地址
                 fetchLocationName(filteredLat, filteredLng)
-                saveLocationToDatabase(filteredLocation)
+                
+                // 保存数据
+                saveLocationToDatabase(locationData)
 
-                if (_isTracking.value) {
-                    saveTrackPoint(filteredLocation)
+                if (_isTracking.value && isMoving) {
+                    saveTrackPoint(locationData)
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "处理定位异常: ${e.message}")
+                Log.e(TAG, "处理GPS异常: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * 评估定位质量
+     */
+    private fun evaluateQuality(): LocationQuality {
+        return when {
+            hdop < 1.0f && usedSatelliteCount >= 8 && avgSnr > 30 -> LocationQuality.EXCELLENT
+            hdop < 2.0f && usedSatelliteCount >= 6 && avgSnr > 25 -> LocationQuality.GOOD
+            hdop < 4.0f && usedSatelliteCount >= 4 && avgSnr > 20 -> LocationQuality.FAIR
+            usedSatelliteCount >= 3 && avgSnr > 15 -> LocationQuality.POOR
+            else -> LocationQuality.BAD
         }
     }
 
@@ -500,27 +557,6 @@ class LocationRepository(
         val dLng = Math.toRadians(lng2 - lng1)
         val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLng / 2).pow(2.0)
         return R * 2 * atan2(sqrt(a), sqrt(1 - a))
-    }
-
-    private fun createLocationData(location: Location): LocationData {
-        val egmOffset = getEGMOffset(location.latitude, location.longitude)
-        
-        return LocationData(
-            latitude = location.latitude,
-            longitude = location.longitude,
-            altitude = location.altitude + egmOffset,
-            accuracy = location.accuracy,
-            speed = location.speed,
-            bearing = location.bearing,
-            time = location.time,
-            provider = location.provider ?: "unknown",
-            satelliteCount = satelliteCount,
-            hdop = hdop,
-            pdop = pdop,
-            vdop = vdop,
-            snr = avgSnr,
-            quality = LocationQuality.UNKNOWN
-        )
     }
 
     private fun getEGMOffset(lat: Double, lng: Double): Double {
@@ -586,7 +622,6 @@ class LocationRepository(
                     featureName = featureName,
                     postalCode = address.postalCode ?: ""
                 )
-                Log.d(TAG, "📍 地址: $displayName")
             } else {
                 _locationName.value = "无法获取地址"
                 _detailedAddress.value = null

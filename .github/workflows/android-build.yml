@@ -254,29 +254,21 @@ jobs:
         
         echo "✅ Gradle Wrapper files created successfully!"
 
-    - name: Build APK
-      run: ./gradlew assembleRelease
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
 
-    - name: Upload APK - Release
+    - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: GeoSurveyToolbox-APK
-        path: app/build/outputs/apk/release/*.apk
-        retention-days: 30
-
-    - name: Upload APK - Debug
-      uses: actions/upload-artifact@v4
-      if: success()
-      with:
-        name: GeoSurveyToolbox-APK-Debug
+        name: GeoSurveyToolbox-Debug-APK
         path: app/build/outputs/apk/debug/*.apk
         retention-days: 30
 
-    - name: Upload Mapping File
+    - name: Upload Release APK (if exists)
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: ProGuard-Mapping
-        path: app/build/outputs/mapping/release/mapping.txt
+        name: GeoSurveyToolbox-Release-APK
+        path: app/build/outputs/apk/release/*.apk
         retention-days: 30

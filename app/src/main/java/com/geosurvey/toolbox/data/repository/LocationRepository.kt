@@ -27,10 +27,7 @@ import java.util.Locale
 import kotlin.math.*
 
 /**
- * 定位仓库 - 完整功能
- * 1. 高斯-克吕格投影坐标计算
- * 2. HDOP/VDOP估算
- * 3. 方向计算
+ * 定位仓库 - 高斯投影 + HDOP/VDOP
  */
 class LocationRepository(
     private val context: Context,
@@ -40,12 +37,9 @@ class LocationRepository(
         private const val TAG = "LocationRepository"
         
         // 高斯-克吕格投影参数 (CGCS2000)
-        private const val A = 6378137.0          // 长半轴
-        private const val F = 1.0 / 298.257222101  // 扁率
-        private const val E2 = 2.0 * F - F * F   // 第一偏心率的平方
-        
-        // 中央子午线 (3度带)
-        private const val CENTRAL_MERIDIAN = 102.0  // 根据坐标自动计算
+        private const val A = 6378137.0
+        private const val F = 1.0 / 298.257222101
+        private const val E2 = 2.0 * F - F * F
     }
 
     private val locationManager: LocationManager by lazy {
@@ -71,7 +65,7 @@ class LocationRepository(
     private val _detailedAddress = MutableStateFlow<DetailedAddress?>(null)
     val detailedAddress: StateFlow<DetailedAddress?> = _detailedAddress.asStateFlow()
 
-    // 高斯投影坐标 (米)
+    // 高斯投影坐标 (米) - 使用StateFlow让UI能观察
     private val _gkX = MutableStateFlow(0.0)
     val gkX: StateFlow<Double> = _gkX.asStateFlow()
     
@@ -81,7 +75,20 @@ class LocationRepository(
     private val _gkZone = MutableStateFlow(0)
     val gkZone: StateFlow<Int> = _gkZone.asStateFlow()
 
-    // GNSS质量参数
+    // GNSS质量参数 - 使用StateFlow让UI能观察
+    private val _hdop = MutableStateFlow(0.0f)
+    val hdopState: StateFlow<Float> = _hdop.asStateFlow()
+    
+    private val _vdop = MutableStateFlow(0.0f)
+    val vdopState: StateFlow<Float> = _vdop.asStateFlow()
+    
+    private val _usedSatellites = MutableStateFlow(0)
+    val usedSatellites: StateFlow<Int> = _usedSatellites.asStateFlow()
+    
+    private val _avgSnr = MutableStateFlow(0.0f)
+    val avgSnrState: StateFlow<Float> = _avgSnr.asStateFlow()
+
+    // 内部缓存
     private var satelliteCount = 0
     private var usedSatelliteCount = 0
     private var avgSnr = 0.0f
@@ -113,65 +120,48 @@ class LocationRepository(
     )
 
     /**
-     * 高斯-克吕格投影转换
-     * @param lat 纬度 (度)
-     * @param lng 经度 (度)
-     * @return Pair(x, y) 坐标 (米)
+     * 高斯-克吕格投影转换 - 3度带
      */
     private fun gaussKrugerProjection(lat: Double, lng: Double): Pair<Double, Double> {
-        // 计算3度带带号
         val zone = ((lng + 1.5) / 3).toInt()
         val centralMeridian = zone * 3.0
         
-        // 角度转弧度
         val latRad = Math.toRadians(lat)
         val lngRad = Math.toRadians(lng)
         val centralMeridianRad = Math.toRadians(centralMeridian)
         
         val delta = lngRad - centralMeridianRad
         
-        // 计算辅助量
         val sinLat = sin(latRad)
         val cosLat = cos(latRad)
         val tanLat = tan(latRad)
         
-        // 计算子午线弧长
         val e2 = E2
         val e4 = e2 * e2
         val e6 = e4 * e2
         val e8 = e6 * e2
         
-        val a = A
-        val a0 = a * (1 - e2 * (1.0/4 + e2 * (3.0/64 + e2 * (5.0/256 + e2 * 35.0/16384))))
-        val a2 = -a * (e2 * (3.0/8 + e2 * (3.0/32 + e2 * (45.0/1024 + e2 * 175.0/16384))))
-        val a4 = a * (e4 * (15.0/256 + e4 * (45.0/1024 + e4 * 525.0/16384)))
-        val a6 = -a * (e6 * (35.0/3072 + e6 * 175.0/12288))
-        val a8 = a * (e8 * 315.0/131072)
+        val a0 = A * (1 - e2 * (1.0/4 + e2 * (3.0/64 + e2 * (5.0/256 + e2 * 35.0/16384))))
+        val a2 = -A * (e2 * (3.0/8 + e2 * (3.0/32 + e2 * (45.0/1024 + e2 * 175.0/16384))))
+        val a4 = A * (e4 * (15.0/256 + e4 * (45.0/1024 + e4 * 525.0/16384)))
+        val a6 = -A * (e6 * (35.0/3072 + e6 * 175.0/12288))
+        val a8 = A * (e8 * 315.0/131072)
         
         val B = a0 * latRad + a2 * sin(2 * latRad) + a4 * sin(4 * latRad) + a6 * sin(6 * latRad) + a8 * sin(8 * latRad)
         
-        // 计算子午线弧长
         val N = A / sqrt(1 - e2 * sinLat * sinLat)
         val t = tanLat
         val eta2 = e2 / (1 - e2) * cosLat * cosLat
         
-        // 高斯-克吕格正算公式
-        val x = B + N * t * (delta * delta / 2 + delta * delta * delta * delta / 24 * (5 - t * t + 9 * eta2 + 4 * eta2 * eta2) + 
+        val x = B + N * t * (delta * delta / 2 + 
+                delta * delta * delta * delta / 24 * (5 - t * t + 9 * eta2 + 4 * eta2 * eta2) + 
                 delta * delta * delta * delta * delta * delta / 720 * (61 - 58 * t * t + t * t * t * t))
         
-        val y = N * (delta + delta * delta * delta / 6 * (1 - t * t + eta2) + 
+        val y = N * (delta + 
+                delta * delta * delta / 6 * (1 - t * t + eta2) + 
                 delta * delta * delta * delta * delta / 120 * (5 - 18 * t * t + t * t * t * t + 14 * eta2 - 58 * eta2 * t * t))
         
-        // 添加带号
         return Pair(x, y + zone * 1000000.0 + 500000.0)
-    }
-
-    /**
-     * 计算中央子午线
-     */
-    private fun getCentralMeridian(lng: Double): Double {
-        val zone = ((lng + 1.5) / 3).toInt()
-        return zone * 3.0
     }
 
     private inner class GnssStatusCallback : android.location.GnssStatus.Callback() {
@@ -193,7 +183,7 @@ class LocationRepository(
     }
 
     /**
-     * 分析GNSS卫星状态 - 估算HDOP/VDOP
+     * 分析GNSS卫星状态
      */
     private fun analyzeGnssStatus(status: android.location.GnssStatus) {
         val satelliteList = mutableListOf<SatelliteInfo>()
@@ -250,28 +240,30 @@ class LocationRepository(
         usedSatelliteCount = usedCount
         avgSnr = if (validSnrCount > 0) totalSnr / validSnrCount else 0f
         
-        _satellites.value = satelliteList
-        
-        // 估算HDOP和VDOP
-        // 基于锁定卫星的数量和仰角分布
+        // ===== 计算HDOP和VDOP =====
         if (usedCount >= 4 && validElevationCount > 0) {
             val avgElev = totalElevation / validElevationCount
-            
-            // 更好的卫星分布 = 更低的HDOP
-            // 仰角越高，垂直精度越好
-            val hdopFactor = 12.0f / usedCount
-            val vdopFactor = 8.0f / usedCount * (1.0f + (45.0f - avgElev) / 90.0f)
-            
-            hdop = hdopFactor.coerceIn(0.5f, 20.0f)
-            vdop = vdopFactor.coerceIn(0.5f, 20.0f)
+            // HDOP计算：基于卫星数量和平均仰角
+            // 卫星越多HDOP越小，仰角越高HDOP越小
+            val baseHdop = 12.0f / usedCount
+            val elevFactor = 1.0f + (45.0f - avgElev) / 90.0f
+            hdop = (baseHdop * elevFactor).coerceIn(0.5f, 20.0f)
+            vdop = (baseHdop * 0.8f * elevFactor).coerceIn(0.5f, 20.0f)
         } else {
             hdop = 0f
             vdop = 0f
         }
         
-        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount")
-        Log.d(TAG, "   GPS=$gpsCount, GLONASS=$glonassCount, Galileo=$galileoCount, 北斗=$beidouCount")
-        Log.d(TAG, "   SNR=${String.format("%.1f", avgSnr)}dB, HDOP=${String.format("%.1f", hdop)}, VDOP=${String.format("%.1f", vdop)}")
+        // ===== 更新StateFlow =====
+        _hdop.value = hdop
+        _vdop.value = vdop
+        _usedSatellites.value = usedSatelliteCount
+        _avgSnr.value = avgSnr
+        
+        _satellites.value = satelliteList
+        
+        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount, 北斗=$beidouCount")
+        Log.d(TAG, "   HDOP=${String.format("%.1f", hdop)}, VDOP=${String.format("%.1f", vdop)}")
     }
 
     fun startLocationUpdates() {
@@ -319,7 +311,7 @@ class LocationRepository(
     private fun startGpsListener() {
         gpsListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                Log.d(TAG, "📍 GPS: lat=${location.latitude}, lng=${location.longitude}, acc=${location.accuracy}m")
+                Log.d(TAG, "📍 GPS: lat=${location.latitude}, lng=${location.longitude}")
                 handleNewLocation(location)
             }
 
@@ -428,7 +420,7 @@ class LocationRepository(
     }
 
     /**
-     * 处理定位 - 计算高斯投影和HDOP
+     * 处理定位
      */
     private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
@@ -447,12 +439,16 @@ class LocationRepository(
                 _gkY.value = gkY
                 _gkZone.value = zone
                 
-                Log.d(TAG, "高斯投影: X=$gkX, Y=$gkY, 带号=$zone")
+                Log.d(TAG, "高斯投影: X=${String.format("%.2f", gkX)}, Y=${String.format("%.2f", gkY)}")
                 
-                // 2. 获取方向 (只有速度>0时才有意义)
+                // 2. 方向 - 只有在移动时才有值
                 val bearing = if (location.speed > 0.5f) location.bearing else 0f
 
-                // 3. 创建定位数据
+                // 3. 使用最新的HDOP/VDOP值
+                val currentHdop = _hdop.value
+                val currentVdop = _vdop.value
+
+                // 4. 创建定位数据
                 val locationData = LocationData(
                     latitude = lat,
                     longitude = lng,
@@ -463,24 +459,21 @@ class LocationRepository(
                     time = location.time,
                     provider = location.provider ?: "gps",
                     satelliteCount = satelliteCount,
-                    hdop = hdop,
-                    pdop = hdop * 1.5f,  // PDOP ≈ HDOP * 1.5
-                    vdop = vdop,
+                    hdop = currentHdop,
+                    pdop = currentHdop * 1.5f,
+                    vdop = currentVdop,
                     snr = avgSnr,
-                    quality = evaluateQuality()
+                    quality = evaluateQuality(currentHdop)
                 )
 
-                // 更新状态
                 _currentLocation.value = locationData
                 previousLocation = locationData
                 
                 Log.d(TAG, "✅ 坐标已更新: lat=$lat, lng=$lng")
-                Log.d(TAG, "   HDOP=$hdop, VDOP=$vdop, 卫星=$usedSatelliteCount")
+                Log.d(TAG, "   HDOP=$currentHdop, VDOP=$currentVdop")
 
                 // 获取地址
                 fetchLocationName(lat, lng)
-                
-                // 保存数据
                 saveLocationToDatabase(locationData)
 
                 if (_isTracking.value) {
@@ -493,15 +486,13 @@ class LocationRepository(
         }
     }
 
-    /**
-     * 评估定位质量
-     */
-    private fun evaluateQuality(): LocationQuality {
+    private fun evaluateQuality(hdop: Float): LocationQuality {
+        val used = _usedSatellites.value
         return when {
-            hdop < 1.0f && usedSatelliteCount >= 8 -> LocationQuality.EXCELLENT
-            hdop < 2.0f && usedSatelliteCount >= 6 -> LocationQuality.GOOD
-            hdop < 4.0f && usedSatelliteCount >= 4 -> LocationQuality.FAIR
-            usedSatelliteCount >= 3 -> LocationQuality.POOR
+            hdop < 1.0f && used >= 8 -> LocationQuality.EXCELLENT
+            hdop < 2.0f && used >= 6 -> LocationQuality.GOOD
+            hdop < 4.0f && used >= 4 -> LocationQuality.FAIR
+            used >= 3 -> LocationQuality.POOR
             else -> LocationQuality.BAD
         }
     }

@@ -15,7 +15,6 @@ import kotlinx.coroutines.*
 
 /**
  * 前台定位服务
- * 支持应用在后台和熄屏状态下持续定位
  */
 class LocationForegroundService : Service() {
     companion object {
@@ -25,9 +24,6 @@ class LocationForegroundService : Service() {
         const val ACTION_START = "START_LOCATION_SERVICE"
         const val ACTION_STOP = "STOP_LOCATION_SERVICE"
 
-        /**
-         * 启动服务
-         */
         fun startService(context: Context) {
             val intent = Intent(context, LocationForegroundService::class.java).apply {
                 action = ACTION_START
@@ -39,9 +35,6 @@ class LocationForegroundService : Service() {
             }
         }
 
-        /**
-         * 停止服务
-         */
         fun stopService(context: Context) {
             val intent = Intent(context, LocationForegroundService::class.java).apply {
                 action = ACTION_STOP
@@ -56,7 +49,6 @@ class LocationForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // 初始化Repository
         val database = AppDatabase.getDatabase(this)
         locationRepository = LocationRepository(this, database.locationDao())
     }
@@ -74,24 +66,16 @@ class LocationForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopLocationService()
-        // 取消协程
         serviceScope.coroutineContext.cancelChildren()
     }
 
-    /**
-     * 启动定位服务
-     */
     private fun startLocationService() {
         if (isRunning) return
 
-        // 创建通知渠道（Android 8.0+）
         createNotificationChannel()
-
-        // 创建通知
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
 
-        // 开始定位
         if (hasLocationPermission()) {
             locationRepository.startLocationUpdates()
             locationRepository.startTracking()
@@ -99,9 +83,6 @@ class LocationForegroundService : Service() {
         }
     }
 
-    /**
-     * 停止定位服务
-     */
     private fun stopLocationService() {
         if (!isRunning) return
 
@@ -113,9 +94,6 @@ class LocationForegroundService : Service() {
         isRunning = false
     }
 
-    /**
-     * 创建通知渠道
-     */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -132,9 +110,6 @@ class LocationForegroundService : Service() {
         }
     }
 
-    /**
-     * 创建通知
-     */
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("地质勘查工具箱")
@@ -146,9 +121,6 @@ class LocationForegroundService : Service() {
             .build()
     }
 
-    /**
-     * 检查定位权限
-     */
     private fun hasLocationPermission(): Boolean {
         return ActivityCompat.checkSelfPermission(
             this,

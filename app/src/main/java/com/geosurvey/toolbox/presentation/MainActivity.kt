@@ -225,7 +225,7 @@ fun GlassBottomNavigation(
     }
 }
 
-// --- 6. 卫星极坐标图组件 ---
+// --- 6. 卫星极坐标图组件（修复类型错误） ---
 @Composable
 fun SatellitePolarChart(
     satellites: List<com.geosurvey.toolbox.domain.model.SatelliteInfo>,
@@ -276,7 +276,14 @@ fun SatellitePolarChart(
             val labelRadius = radius + 16
             val labelX = centerX + labelRadius * cos(angle).toFloat()
             val labelY = centerY + labelRadius * sin(angle).toFloat()
-            // 使用drawContext.canvas.nativeCanvas绘制文字
+            drawContext.canvas.nativeCanvas.apply {
+                val paint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.parseColor("#64748B")
+                    textSize = 24f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                drawText(labels[i], labelX, labelY + 8, paint)
+            }
         }
 
         // 绘制卫星点
@@ -335,7 +342,7 @@ fun SatellitePolarChart(
     }
 }
 
-// --- 7. 预览窗口（点击整个窗口展开） ---
+// --- 7. 预览窗口 ---
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PreviewWindow(
@@ -396,7 +403,7 @@ fun PreviewWindow(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // 标题行 - 点击触发展开
+                // 标题行
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -419,7 +426,7 @@ fun PreviewWindow(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 内容区域 - 展开时显示完整内容
+                // 内容区域
                 if (isExpanded && expandedContent != null) {
                     AnimatedContent(
                         targetState = true,
@@ -436,7 +443,6 @@ fun PreviewWindow(
                         }
                     }
                 } else {
-                    // 非展开状态显示简短的副标题
                     Text(
                         text = subtitle,
                         fontSize = 14.sp,
@@ -693,7 +699,6 @@ fun HomeScreen(state: HomeScreenState) {
                         }
                     }
                 } else {
-                    // 正在搜索GPS
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
@@ -829,7 +834,6 @@ fun HomeScreen(state: HomeScreenState) {
                                 color = Color(0xFF1E293B)
                             )
                             if (satellites.isNotEmpty()) {
-                                // 按星座分组显示
                                 val gpsList = satellites.filter { it.constellation == Constellation.GPS }
                                 val glonassList = satellites.filter { it.constellation == Constellation.GLONASS }
                                 val galileoList = satellites.filter { it.constellation == Constellation.GALILEO }
@@ -853,7 +857,6 @@ fun HomeScreen(state: HomeScreenState) {
                                     }
                                 }
                                 
-                                // 显示前5颗卫星
                                 satellites.take(5).forEach { satellite ->
                                     Text(
                                         "${satellite.constellation.name} #${satellite.prn} | " +

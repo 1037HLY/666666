@@ -1,5 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 主色 - 青绿/蓝绿色 -->
     <color name="primary">#0EA5E9</color>
-    <color name="glass_background">#E8F0FE</color>
+    <color name="primary_dark">#0284C7</color>
+    <color name="primary_light">#7DD3FC</color>
+    <color name="secondary">#10B981</color>
+    <color name="secondary_dark">#059669</color>
+
+    <!-- 辅助色 -->
+    <color name="accent">#8B5CF6</color>
+    <color name="warning">#F59E0B</color>
+    <color name="error">#EF4444</color>
+    <color name="success">#10B981</color>
+
+    <!-- 中性色 -->
+    <color name="surface">#F8FAFC</color>
+    <color name="surface_variant">#F1F5F9</color>
+    <color name="on_surface">#0F172A</color>
+    <color name="on_surface_secondary">#475569</color>
+
+    <!-- 毛玻璃效果 -->
+    <color name="glass_light">#E8F0FE</color>
+    <color name="glass_dark">#1A2332</color>
+
+    <!-- 应用图标背景色 -->
+    <color name="ic_launcher_background">#0EA5E9</color>
 </resources>

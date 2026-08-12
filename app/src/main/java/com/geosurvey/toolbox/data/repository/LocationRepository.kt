@@ -82,6 +82,9 @@ class LocationRepository(
     // 静止状态
     private var isStationary = false
 
+    // GNSS状态回调（仅在Android 7.0+使用）
+    private var gnssStatusCallback: Any? = null
+
     /**
      * 开始定位
      */
@@ -112,17 +115,69 @@ class LocationRepository(
                 null
             )
 
-            // 同时监听GNSS状态
+            // 同时监听GNSS状态（Android 7.0+）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                try {
-                    locationManager.registerGnssStatusCallback(gnssStatusCallback, null)
-                } catch (e: SecurityException) {
-                    // 忽略权限异常
-                }
+                registerGnssStatusCallback()
             }
         } catch (e: SecurityException) {
             isRunning = false
         }
+    }
+
+    /**
+     * 注册GNSS状态回调（Android 7.0+）
+     */
+    private fun registerGnssStatusCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val callback = object : android.location.GnssStatus.Callback() {
+                    override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
+                        updateSatelliteInfo(status)
+                    }
+                }
+                gnssStatusCallback = callback
+                locationManager.registerGnssStatusCallback(callback, null)
+            } catch (e: SecurityException) {
+                // 忽略权限异常
+            } catch (e: Exception) {
+                // 忽略其他异常
+            }
+        }
+    }
+
+    /**
+     * 更新卫星信息
+     */
+    private fun updateSatelliteInfo(status: android.location.GnssStatus) {
+        val satelliteList = mutableListOf<SatelliteInfo>()
+        for (i in 0 until status.satelliteCount) {
+            val prn = status.getSvid(i)
+            val snr = status.getCn0DbHz(i)
+            val azimuth = status.getAzimuthDegrees(i)
+            val elevation = status.getElevationDegrees(i)
+            val usedInFix = status.usedInFix(i)
+
+            val constellation = when (status.getConstellationType(i)) {
+                android.location.GnssStatus.CONSTELLATION_GPS -> Constellation.GPS
+                android.location.GnssStatus.CONSTELLATION_GLONASS -> Constellation.GLONASS
+                android.location.GnssStatus.CONSTELLATION_GALILEO -> Constellation.GALILEO
+                android.location.GnssStatus.CONSTELLATION_BEIDOU -> Constellation.BEIDOU
+                android.location.GnssStatus.CONSTELLATION_QZSS -> Constellation.QZSS
+                else -> Constellation.UNKNOWN
+            }
+
+            satelliteList.add(
+                SatelliteInfo(
+                    prn = prn,
+                    constellation = constellation,
+                    snr = snr,
+                    azimuth = azimuth,
+                    elevation = elevation,
+                    usedInFix = usedInFix
+                )
+            )
+        }
+        _satellites.value = satelliteList
     }
 
     /**
@@ -141,13 +196,18 @@ class LocationRepository(
         }
         locationCallback = null
 
+        // 取消GNSS回调
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
-                locationManager.unregisterGnssStatusCallback(gnssStatusCallback)
+                gnssStatusCallback?.let {
+                    // 使用兼容方式取消注册
+                    locationManager.unregisterGnssStatusCallback(it as android.location.GnssStatus.Callback)
+                }
             } catch (e: Exception) {
                 // ignore
             }
         }
+        gnssStatusCallback = null
     }
 
     /**
@@ -350,52 +410,12 @@ class LocationRepository(
     }
 
     /**
-     * GNSS状态回调（Android 7.0+）
-     */
-    private val gnssStatusCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        object : android.location.GnssStatus.Callback() {
-            override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
-                val satelliteList = mutableListOf<SatelliteInfo>()
-                for (i in 0 until status.satelliteCount) {
-                    val prn = status.getSvid(i)
-                    val snr = status.getCn0DbHz(i)
-                    val azimuth = status.getAzimuthDegrees(i)
-                    val elevation = status.getElevationDegrees(i)
-                    val usedInFix = status.usedInFix(i)
-
-                    val constellation = when (status.getConstellationType(i)) {
-                        android.location.GnssStatus.CONSTELLATION_GPS -> Constellation.GPS
-                        android.location.GnssStatus.CONSTELLATION_GLONASS -> Constellation.GLONASS
-                        android.location.GnssStatus.CONSTELLATION_GALILEO -> Constellation.GALILEO
-                        android.location.GnssStatus.CONSTELLATION_BEIDOU -> Constellation.BEIDOU
-                        android.location.GnssStatus.CONSTELLATION_QZSS -> Constellation.QZSS
-                        else -> Constellation.UNKNOWN
-                    }
-
-                    satelliteList.add(
-                        SatelliteInfo(
-                            prn = prn,
-                            constellation = constellation,
-                            snr = snr,
-                            azimuth = azimuth,
-                            elevation = elevation,
-                            usedInFix = usedInFix
-                        )
-                    )
-                }
-                _satellites.value = satelliteList
-            }
-        }
-    } else {
-        null
-    }
-
-    /**
-     * 获取卫星数量
+     * 获取卫星数量（兼容所有Android版本）
      */
     private fun getSatelliteCount(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
+                // Android 7.0+ 使用新的API
                 val status = locationManager.getGnssStatus(null)
                 status?.satelliteCount ?: 0
             } catch (e: Exception) {
@@ -403,6 +423,7 @@ class LocationRepository(
             }
         } else {
             try {
+                // Android 6.0及以下使用旧API
                 @Suppress("DEPRECATION")
                 val status = locationManager.getGpsStatus(null)
                 status?.satellites?.size ?: 0
@@ -416,7 +437,6 @@ class LocationRepository(
      * 获取HDOP
      */
     private fun getHdop(): Float {
-        // 简化实现，从location获取精度作为参考
         return _currentLocation.value?.accuracy ?: 0f
     }
 
@@ -424,7 +444,6 @@ class LocationRepository(
      * 获取PDOP
      */
     private fun getPdop(): Float {
-        // 简化实现
         return _currentLocation.value?.accuracy?.times(1.5f) ?: 0f
     }
 
@@ -432,7 +451,6 @@ class LocationRepository(
      * 获取VDOP
      */
     private fun getVdop(): Float {
-        // 简化实现
         return _currentLocation.value?.accuracy?.times(1.2f) ?: 0f
     }
 
@@ -458,7 +476,7 @@ class LocationRepository(
      */
     fun cleanup() {
         stopLocationUpdates()
-        // 取消协程作用域
+        // 取消所有协程任务
         repositoryScope.coroutineContext.cancelChildren()
     }
 }

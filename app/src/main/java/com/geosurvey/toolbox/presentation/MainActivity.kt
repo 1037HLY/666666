@@ -1113,6 +1113,7 @@ fun TrackFullscreenContent(
     isTracking: Boolean,
     uiState: LocationUiState
 ) {
+    // 从ViewModel获取导航状态
     val isNavigating by viewModel.isNavigating.collectAsState()
     val navigationTarget by viewModel.navigationTarget.collectAsState()
     val navigationDistance by viewModel.navigationDistance.collectAsState()

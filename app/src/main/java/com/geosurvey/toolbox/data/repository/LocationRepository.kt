@@ -21,34 +21,26 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 定位数据仓库
- * 负责管理所有定位相关的数据源和操作
  */
 class LocationRepository(
     private val context: Context,
     private val locationDao: LocationDao
 ) {
-    // FusedLocationProviderClient
     private val fusedLocationClient: FusedLocationProviderClient by lazy {
         LocationServices.getFusedLocationProviderClient(context)
     }
 
-    // LocationManager（用于GNSS信息）
     private val locationManager: LocationManager by lazy {
         context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
 
-    // Kalman滤波器
     private val kalmanFilter = KalmanFilter2D(
         processNoise = 0.01,
         measurementNoise = 10.0
@@ -67,38 +59,21 @@ class LocationRepository(
     private val _trackPoints = MutableStateFlow<List<TrackEntity>>(emptyList())
     val trackPoints: StateFlow<List<TrackEntity>> = _trackPoints.asStateFlow()
 
-    // 上一次定位数据（用于漂移检测）
     private var previousLocation: LocationData? = null
-
-    // 协程作用域
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    // LocationCallback
     private var locationCallback: LocationCallback? = null
-
-    // 是否正在运行
     private var isRunning = false
-
-    // 静止状态
     private var isStationary = false
-
-    // GNSS状态回调（仅在Android 7.0+使用）
-    private var gnssStatusCallback: Any? = null
 
     /**
      * 开始定位
      */
     fun startLocationUpdates() {
         if (isRunning) return
-
-        // 检查权限
-        if (!hasLocationPermission()) {
-            return
-        }
+        if (!hasLocationPermission()) return
 
         isRunning = true
 
-        // 创建LocationCallback
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { location ->
@@ -107,77 +82,15 @@ class LocationRepository(
             }
         }
 
-        // 请求位置更新
         try {
             fusedLocationClient.requestLocationUpdates(
                 createLocationRequest(),
                 locationCallback!!,
                 null
             )
-
-            // 同时监听GNSS状态（Android 7.0+）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                registerGnssStatusCallback()
-            }
         } catch (e: SecurityException) {
             isRunning = false
         }
-    }
-
-    /**
-     * 注册GNSS状态回调（Android 7.0+）
-     */
-    private fun registerGnssStatusCallback() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                val callback = object : android.location.GnssStatus.Callback() {
-                    override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
-                        updateSatelliteInfo(status)
-                    }
-                }
-                gnssStatusCallback = callback
-                locationManager.registerGnssStatusCallback(callback, null)
-            } catch (e: SecurityException) {
-                // 忽略权限异常
-            } catch (e: Exception) {
-                // 忽略其他异常
-            }
-        }
-    }
-
-    /**
-     * 更新卫星信息
-     */
-    private fun updateSatelliteInfo(status: android.location.GnssStatus) {
-        val satelliteList = mutableListOf<SatelliteInfo>()
-        for (i in 0 until status.satelliteCount) {
-            val prn = status.getSvid(i)
-            val snr = status.getCn0DbHz(i)
-            val azimuth = status.getAzimuthDegrees(i)
-            val elevation = status.getElevationDegrees(i)
-            val usedInFix = status.usedInFix(i)
-
-            val constellation = when (status.getConstellationType(i)) {
-                android.location.GnssStatus.CONSTELLATION_GPS -> Constellation.GPS
-                android.location.GnssStatus.CONSTELLATION_GLONASS -> Constellation.GLONASS
-                android.location.GnssStatus.CONSTELLATION_GALILEO -> Constellation.GALILEO
-                android.location.GnssStatus.CONSTELLATION_BEIDOU -> Constellation.BEIDOU
-                android.location.GnssStatus.CONSTELLATION_QZSS -> Constellation.QZSS
-                else -> Constellation.UNKNOWN
-            }
-
-            satelliteList.add(
-                SatelliteInfo(
-                    prn = prn,
-                    constellation = constellation,
-                    snr = snr,
-                    azimuth = azimuth,
-                    elevation = elevation,
-                    usedInFix = usedInFix
-                )
-            )
-        }
-        _satellites.value = satelliteList
     }
 
     /**
@@ -195,19 +108,6 @@ class LocationRepository(
             }
         }
         locationCallback = null
-
-        // 取消GNSS回调
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                gnssStatusCallback?.let {
-                    // 使用兼容方式取消注册
-                    locationManager.unregisterGnssStatusCallback(it as android.location.GnssStatus.Callback)
-                }
-            } catch (e: Exception) {
-                // ignore
-            }
-        }
-        gnssStatusCallback = null
     }
 
     /**
@@ -222,13 +122,12 @@ class LocationRepository(
      */
     fun stopTracking() {
         _isTracking.value = false
-        // 重置滤波器
         kalmanFilter.reset()
         previousLocation = null
     }
 
     /**
-     * 获取最新的轨迹点
+     * 获取最近的轨迹点
      */
     suspend fun getRecentTracks(limit: Int = 100): List<TrackEntity> {
         return withContext(Dispatchers.IO) {
@@ -259,30 +158,22 @@ class LocationRepository(
      */
     private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
-            // 1. 创建LocationData对象
             val rawLocation = createLocationData(location)
-
-            // 2. 质量评估
             val quality = LocationQualityEvaluator.evaluate(rawLocation)
 
-            // 3. 过滤低质量定位点
             if (quality == LocationQuality.BAD || quality == LocationQuality.UNKNOWN) {
                 return@launch
             }
 
-            // 4. 漂移检测
             previousLocation?.let { prev ->
                 if (LocationQualityEvaluator.isDriftDetected(prev, rawLocation)) {
-                    // 检测到漂移，忽略此点
                     return@launch
                 }
             }
 
-            // 5. 静止检测
             previousLocation?.let { prev ->
                 if (LocationQualityEvaluator.isStationary(rawLocation, prev)) {
                     isStationary = true
-                    // 静止时，如果正在记录轨迹，不添加新点
                     if (_isTracking.value) {
                         previousLocation = rawLocation
                         return@launch
@@ -292,30 +183,23 @@ class LocationRepository(
                 }
             }
 
-            // 6. Kalman滤波（经纬度）
             val (filteredLat, filteredLng) = kalmanFilter.update(
                 rawLocation.latitude,
                 rawLocation.longitude
             )
 
-            // 7. 创建滤波后的定位数据
             val filteredLocation = rawLocation.copy(
                 latitude = filteredLat,
                 longitude = filteredLng
             )
 
-            // 8. 更新当前定位
             _currentLocation.value = filteredLocation
-
-            // 9. 保存到数据库（异步）
             saveLocationToDatabase(filteredLocation)
 
-            // 10. 如果正在记录轨迹，保存轨迹点
             if (_isTracking.value && !isStationary) {
                 saveTrackPoint(filteredLocation)
             }
 
-            // 11. 更新前一个位置
             previousLocation = filteredLocation
         }
     }
@@ -333,11 +217,11 @@ class LocationRepository(
             bearing = location.bearing,
             time = location.time,
             provider = location.provider ?: "unknown",
-            satelliteCount = getSatelliteCount(),
-            hdop = getHdop(),
-            pdop = getPdop(),
-            vdop = getVdop(),
-            snr = getMaxSnr(),
+            satelliteCount = 0, // 简化处理
+            hdop = location.accuracy,
+            pdop = location.accuracy * 1.5f,
+            vdop = location.accuracy * 1.2f,
+            snr = 0f,
             quality = LocationQuality.UNKNOWN
         )
     }
@@ -385,10 +269,8 @@ class LocationRepository(
         )
         locationDao.insertTrackPoint(track)
 
-        // 更新轨迹点列表
         val currentTracks = _trackPoints.value.toMutableList()
         currentTracks.add(track)
-        // 只保留最近的1000个点
         if (currentTracks.size > 1000) {
             currentTracks.removeAt(0)
         }
@@ -401,64 +283,12 @@ class LocationRepository(
     private fun createLocationRequest(): com.google.android.gms.location.LocationRequest {
         return com.google.android.gms.location.LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            1000 // 1秒更新一次
+            1000
         )
-            .setMinUpdateDistanceMeters(1.0f) // 移动1米更新
+            .setMinUpdateDistanceMeters(1.0f)
             .setMinUpdateIntervalMillis(1000)
             .setMaxUpdateDelayMillis(5000)
             .build()
-    }
-
-    /**
-     * 获取卫星数量（兼容所有Android版本）
-     */
-    private fun getSatelliteCount(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                // Android 7.0+ 使用新的API
-                val status = locationManager.getGnssStatus(null)
-                status?.satelliteCount ?: 0
-            } catch (e: Exception) {
-                0
-            }
-        } else {
-            try {
-                // Android 6.0及以下使用旧API
-                @Suppress("DEPRECATION")
-                val status = locationManager.getGpsStatus(null)
-                status?.satellites?.size ?: 0
-            } catch (e: Exception) {
-                0
-            }
-        }
-    }
-
-    /**
-     * 获取HDOP
-     */
-    private fun getHdop(): Float {
-        return _currentLocation.value?.accuracy ?: 0f
-    }
-
-    /**
-     * 获取PDOP
-     */
-    private fun getPdop(): Float {
-        return _currentLocation.value?.accuracy?.times(1.5f) ?: 0f
-    }
-
-    /**
-     * 获取VDOP
-     */
-    private fun getVdop(): Float {
-        return _currentLocation.value?.accuracy?.times(1.2f) ?: 0f
-    }
-
-    /**
-     * 获取最大信噪比
-     */
-    private fun getMaxSnr(): Float {
-        return _satellites.value.maxOfOrNull { it.snr } ?: 0f
     }
 
     /**
@@ -476,7 +306,6 @@ class LocationRepository(
      */
     fun cleanup() {
         stopLocationUpdates()
-        // 取消所有协程任务
         repositoryScope.coroutineContext.cancelChildren()
     }
 }

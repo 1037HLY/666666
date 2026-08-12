@@ -44,20 +44,16 @@ object LocationQualityEvaluator {
 
     /**
      * 检查是否发生漂移
-     * @param previousLocation 上一个定位点
-     * @param currentLocation 当前定位点
-     * @param maxSpeedThreshold 最大合理速度 (m/s)
      */
     fun isDriftDetected(
         previousLocation: LocationData,
         currentLocation: LocationData,
-        maxSpeedThreshold: Float = 100f // 100m/s = 360km/h
+        maxSpeedThreshold: Float = 100f
     ): Boolean {
         if (previousLocation.latitude == 0.0 && previousLocation.longitude == 0.0) {
             return false
         }
 
-        // 计算两点之间的距离
         val distance = calculateDistance(
             previousLocation.latitude,
             previousLocation.longitude,
@@ -65,21 +61,16 @@ object LocationQualityEvaluator {
             currentLocation.longitude
         )
 
-        // 计算时间差（秒）
         val timeDiff = (currentLocation.time - previousLocation.time) / 1000.0
         
         if (timeDiff <= 0) return false
 
-        // 计算速度 (m/s)
         val speed = distance / timeDiff
-
-        // 如果速度超过阈值，判定为漂移
         return speed > maxSpeedThreshold
     }
 
     /**
      * 计算两个坐标点之间的距离（Haversine公式）
-     * @return 距离（米）
      */
     private fun calculateDistance(
         lat1: Double,
@@ -87,7 +78,7 @@ object LocationQualityEvaluator {
         lat2: Double,
         lng2: Double
     ): Double {
-        val R = 6371000.0 // 地球半径（米）
+        val R = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLng = Math.toRadians(lng2 - lng1)
         val a = sin(dLat / 2).pow(2.0) +
@@ -99,9 +90,6 @@ object LocationQualityEvaluator {
 
     /**
      * 检查是否静止
-     * @param location 当前定位点
-     * @param previousLocation 上一个定位点
-     * @param threshold 静止阈值（米）
      */
     fun isStationary(
         location: LocationData,

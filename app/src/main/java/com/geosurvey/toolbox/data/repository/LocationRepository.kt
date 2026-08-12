@@ -26,9 +26,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 import kotlin.math.*
 
-/**
- * 定位仓库 - 高斯投影 + HDOP/VDOP
- */
 class LocationRepository(
     private val context: Context,
     private val locationDao: LocationDao
@@ -36,10 +33,16 @@ class LocationRepository(
     companion object {
         private const val TAG = "LocationRepository"
         
-        // 高斯-克吕格投影参数 (CGCS2000)
-        private const val A = 6378137.0
-        private const val F = 1.0 / 298.257222101
-        private const val E2 = 2.0 * F - F * F
+        // 静止检测阈值 (米)
+        private const val STATIONARY_THRESHOLD = 2.0
+        // 最小记录距离 (米) - 移动超过此距离才记录
+        private const val MIN_RECORD_DISTANCE = 1.0
+        // 最大加速度 (m/s²) - 用于过滤异常跳点
+        private const val MAX_ACCELERATION = 20.0
+        // 最小卫星数
+        private const val MIN_SATELLITES = 4
+        // 最小信噪比 (dB)
+        private const val MIN_SNR = 15.0f
     }
 
     private val locationManager: LocationManager by lazy {
@@ -65,42 +68,33 @@ class LocationRepository(
     private val _detailedAddress = MutableStateFlow<DetailedAddress?>(null)
     val detailedAddress: StateFlow<DetailedAddress?> = _detailedAddress.asStateFlow()
 
-    // 高斯投影坐标 (米) - 使用StateFlow让UI能观察
-    private val _gkX = MutableStateFlow(0.0)
-    val gkX: StateFlow<Double> = _gkX.asStateFlow()
+    // 轨迹导航状态
+    private val _navigationTarget = MutableStateFlow<TrackEntity?>(null)
+    val navigationTarget: StateFlow<TrackEntity?> = _navigationTarget.asStateFlow()
     
-    private val _gkY = MutableStateFlow(0.0)
-    val gkY: StateFlow<Double> = _gkY.asStateFlow()
+    private val _navigationDistance = MutableStateFlow(0.0)
+    val navigationDistance: StateFlow<Double> = _navigationDistance.asStateFlow()
     
-    private val _gkZone = MutableStateFlow(0)
-    val gkZone: StateFlow<Int> = _gkZone.asStateFlow()
+    private val _navigationBearing = MutableStateFlow(0.0)
+    val navigationBearing: StateFlow<Double> = _navigationBearing.asStateFlow()
+    
+    private val _isNavigating = MutableStateFlow(false)
+    val isNavigating: StateFlow<Boolean> = _isNavigating.asStateFlow()
 
-    // GNSS质量参数 - 使用StateFlow让UI能观察
-    private val _hdop = MutableStateFlow(0.0f)
-    val hdopState: StateFlow<Float> = _hdop.asStateFlow()
-    
-    private val _vdop = MutableStateFlow(0.0f)
-    val vdopState: StateFlow<Float> = _vdop.asStateFlow()
-    
-    private val _usedSatellites = MutableStateFlow(0)
-    val usedSatellites: StateFlow<Int> = _usedSatellites.asStateFlow()
-    
-    private val _avgSnr = MutableStateFlow(0.0f)
-    val avgSnrState: StateFlow<Float> = _avgSnr.asStateFlow()
-
-    // 内部缓存
+    // GNSS质量参数
     private var satelliteCount = 0
     private var usedSatelliteCount = 0
     private var avgSnr = 0.0f
-    private var hdop = 0.0f
-    private var vdop = 0.0f
-    
     private var gpsCount = 0
     private var glonassCount = 0
     private var galileoCount = 0
     private var beidouCount = 0
     
-    private var previousLocation: LocationData? = null
+    // 位置缓存 - 用于轨迹记录
+    private var lastRecordedLocation: TrackEntity? = null
+    private var lastValidLocation: LocationData? = null
+    private var isMoving = false
+    private var consecutiveStationaryCount = 0
     
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isRunning = false
@@ -118,51 +112,6 @@ class LocationRepository(
         val featureName: String = "",
         val postalCode: String = ""
     )
-
-    /**
-     * 高斯-克吕格投影转换 - 3度带
-     */
-    private fun gaussKrugerProjection(lat: Double, lng: Double): Pair<Double, Double> {
-        val zone = ((lng + 1.5) / 3).toInt()
-        val centralMeridian = zone * 3.0
-        
-        val latRad = Math.toRadians(lat)
-        val lngRad = Math.toRadians(lng)
-        val centralMeridianRad = Math.toRadians(centralMeridian)
-        
-        val delta = lngRad - centralMeridianRad
-        
-        val sinLat = sin(latRad)
-        val cosLat = cos(latRad)
-        val tanLat = tan(latRad)
-        
-        val e2 = E2
-        val e4 = e2 * e2
-        val e6 = e4 * e2
-        val e8 = e6 * e2
-        
-        val a0 = A * (1 - e2 * (1.0/4 + e2 * (3.0/64 + e2 * (5.0/256 + e2 * 35.0/16384))))
-        val a2 = -A * (e2 * (3.0/8 + e2 * (3.0/32 + e2 * (45.0/1024 + e2 * 175.0/16384))))
-        val a4 = A * (e4 * (15.0/256 + e4 * (45.0/1024 + e4 * 525.0/16384)))
-        val a6 = -A * (e6 * (35.0/3072 + e6 * 175.0/12288))
-        val a8 = A * (e8 * 315.0/131072)
-        
-        val B = a0 * latRad + a2 * sin(2 * latRad) + a4 * sin(4 * latRad) + a6 * sin(6 * latRad) + a8 * sin(8 * latRad)
-        
-        val N = A / sqrt(1 - e2 * sinLat * sinLat)
-        val t = tanLat
-        val eta2 = e2 / (1 - e2) * cosLat * cosLat
-        
-        val x = B + N * t * (delta * delta / 2 + 
-                delta * delta * delta * delta / 24 * (5 - t * t + 9 * eta2 + 4 * eta2 * eta2) + 
-                delta * delta * delta * delta * delta * delta / 720 * (61 - 58 * t * t + t * t * t * t))
-        
-        val y = N * (delta + 
-                delta * delta * delta / 6 * (1 - t * t + eta2) + 
-                delta * delta * delta * delta * delta / 120 * (5 - 18 * t * t + t * t * t * t + 14 * eta2 - 58 * eta2 * t * t))
-        
-        return Pair(x, y + zone * 1000000.0 + 500000.0)
-    }
 
     private inner class GnssStatusCallback : android.location.GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
@@ -182,9 +131,6 @@ class LocationRepository(
         }
     }
 
-    /**
-     * 分析GNSS卫星状态
-     */
     private fun analyzeGnssStatus(status: android.location.GnssStatus) {
         val satelliteList = mutableListOf<SatelliteInfo>()
         
@@ -196,8 +142,6 @@ class LocationRepository(
         var totalSnr = 0.0f
         var validSnrCount = 0
         var usedCount = 0
-        var totalElevation = 0.0f
-        var validElevationCount = 0
         
         for (i in 0 until status.satelliteCount) {
             val prn = status.getSvid(i)
@@ -206,11 +150,7 @@ class LocationRepository(
             val elevation = status.getElevationDegrees(i)
             val usedInFix = status.usedInFix(i)
             
-            if (usedInFix) {
-                usedCount++
-                totalElevation += elevation
-                validElevationCount++
-            }
+            if (usedInFix) usedCount++
             if (snr > 0) {
                 totalSnr += snr
                 validSnrCount++
@@ -240,39 +180,15 @@ class LocationRepository(
         usedSatelliteCount = usedCount
         avgSnr = if (validSnrCount > 0) totalSnr / validSnrCount else 0f
         
-        // ===== 计算HDOP和VDOP =====
-        if (usedCount >= 4 && validElevationCount > 0) {
-            val avgElev = totalElevation / validElevationCount
-            // HDOP计算：基于卫星数量和平均仰角
-            // 卫星越多HDOP越小，仰角越高HDOP越小
-            val baseHdop = 12.0f / usedCount
-            val elevFactor = 1.0f + (45.0f - avgElev) / 90.0f
-            hdop = (baseHdop * elevFactor).coerceIn(0.5f, 20.0f)
-            vdop = (baseHdop * 0.8f * elevFactor).coerceIn(0.5f, 20.0f)
-        } else {
-            hdop = 0f
-            vdop = 0f
-        }
-        
-        // ===== 更新StateFlow =====
-        _hdop.value = hdop
-        _vdop.value = vdop
-        _usedSatellites.value = usedSatelliteCount
-        _avgSnr.value = avgSnr
-        
         _satellites.value = satelliteList
         
-        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount, 北斗=$beidouCount")
-        Log.d(TAG, "   HDOP=${String.format("%.1f", hdop)}, VDOP=${String.format("%.1f", vdop)}")
+        Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount, SNR=${String.format("%.1f", avgSnr)}dB")
     }
 
     fun startLocationUpdates() {
         Log.d(TAG, "========== 开始定位 ==========")
         
-        if (isRunning) {
-            Log.d(TAG, "定位已在运行")
-            return
-        }
+        if (isRunning) return
         
         if (!hasLocationPermission()) {
             Log.e(TAG, "❌ 没有定位权限")
@@ -280,8 +196,6 @@ class LocationRepository(
         }
 
         val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-        Log.d(TAG, "GPS状态: ${if (isGpsEnabled) "已开启" else "未开启"}")
-        
         if (!isGpsEnabled) {
             Log.e(TAG, "❌ GPS未开启")
             return
@@ -392,12 +306,14 @@ class LocationRepository(
 
     fun startTracking() {
         _isTracking.value = true
+        lastRecordedLocation = null
+        lastValidLocation = null
+        consecutiveStationaryCount = 0
         Log.d(TAG, "轨迹记录已开始")
     }
 
     fun stopTracking() {
         _isTracking.value = false
-        previousLocation = null
         Log.d(TAG, "轨迹记录已停止")
     }
 
@@ -420,7 +336,49 @@ class LocationRepository(
     }
 
     /**
-     * 处理定位
+     * 设置导航目标
+     */
+    fun setNavigationTarget(track: TrackEntity?) {
+        _navigationTarget.value = track
+        _isNavigating.value = track != null
+        if (track != null) {
+            Log.d(TAG, "🧭 导航目标已设置: lat=${track.latitude}, lng=${track.longitude}")
+        } else {
+            Log.d(TAG, "🧭 导航已取消")
+        }
+    }
+
+    /**
+     * 更新导航信息
+     */
+    private fun updateNavigation(currentLocation: LocationData) {
+        val target = _navigationTarget.value
+        if (target == null) {
+            _navigationDistance.value = 0.0
+            _navigationBearing.value = 0.0
+            return
+        }
+
+        val distance = haversine(
+            currentLocation.latitude, currentLocation.longitude,
+            target.latitude, target.longitude
+        )
+        _navigationDistance.value = distance
+
+        // 计算方位角
+        val lat1 = Math.toRadians(currentLocation.latitude)
+        val lat2 = Math.toRadians(target.latitude)
+        val lng1 = Math.toRadians(currentLocation.longitude)
+        val lng2 = Math.toRadians(target.longitude)
+        
+        val y = sin(lng2 - lng1) * cos(lat2)
+        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lng2 - lng1)
+        val bearing = Math.toDegrees(atan2(y, x))
+        _navigationBearing.value = (bearing + 360) % 360
+    }
+
+    /**
+     * 处理新的定位数据 - 带精度过滤和静止检测
      */
     private fun handleNewLocation(location: Location) {
         repositoryScope.launch {
@@ -428,57 +386,58 @@ class LocationRepository(
                 val lat = location.latitude
                 val lng = location.longitude
                 
-                Log.d(TAG, "=== 处理GPS坐标 ===")
-                Log.d(TAG, "纬度: $lat, 经度: $lng")
+                // 1. 质量检查
+                if (usedSatelliteCount < MIN_SATELLITES) {
+                    Log.d(TAG, "⚠️ 卫星数不足: $usedSatelliteCount < $MIN_SATELLITES")
+                    return@launch
+                }
                 
-                // 1. 计算高斯-克吕格投影坐标
-                val (gkX, gkY) = gaussKrugerProjection(lat, lng)
-                val zone = ((lng + 1.5) / 3).toInt()
-                
-                _gkX.value = gkX
-                _gkY.value = gkY
-                _gkZone.value = zone
-                
-                Log.d(TAG, "高斯投影: X=${String.format("%.2f", gkX)}, Y=${String.format("%.2f", gkY)}")
-                
-                // 2. 方向 - 只有在移动时才有值
-                val bearing = if (location.speed > 0.5f) location.bearing else 0f
+                if (avgSnr < MIN_SNR && usedSatelliteCount < 6) {
+                    Log.d(TAG, "⚠️ 信噪比过低: ${String.format("%.1f", avgSnr)}dB < ${MIN_SNR}dB")
+                    return@launch
+                }
 
-                // 3. 使用最新的HDOP/VDOP值
-                val currentHdop = _hdop.value
-                val currentVdop = _vdop.value
+                // 2. 精度检查
+                if (location.accuracy > 20) {
+                    Log.d(TAG, "⚠️ 精度过低: ${location.accuracy}m > 20m")
+                    return@launch
+                }
 
-                // 4. 创建定位数据
+                // 3. 创建定位数据
                 val locationData = LocationData(
                     latitude = lat,
                     longitude = lng,
                     altitude = location.altitude,
                     accuracy = location.accuracy,
                     speed = location.speed,
-                    bearing = bearing,
+                    bearing = location.bearing,
                     time = location.time,
                     provider = location.provider ?: "gps",
                     satelliteCount = satelliteCount,
-                    hdop = currentHdop,
-                    pdop = currentHdop * 1.5f,
-                    vdop = currentVdop,
+                    hdop = 0f,
+                    pdop = 0f,
+                    vdop = 0f,
                     snr = avgSnr,
-                    quality = evaluateQuality(currentHdop)
+                    quality = LocationQuality.GOOD
                 )
 
+                // 4. 更新当前位置
                 _currentLocation.value = locationData
-                previousLocation = locationData
-                
-                Log.d(TAG, "✅ 坐标已更新: lat=$lat, lng=$lng")
-                Log.d(TAG, "   HDOP=$currentHdop, VDOP=$currentVdop")
+                lastValidLocation = locationData
 
-                // 获取地址
-                fetchLocationName(lat, lng)
-                saveLocationToDatabase(locationData)
+                // 5. 更新导航信息
+                updateNavigation(locationData)
 
+                // 6. 轨迹记录 - 带静止检测和距离过滤
                 if (_isTracking.value) {
-                    saveTrackPoint(locationData)
+                    val shouldRecord = checkShouldRecord(locationData)
+                    if (shouldRecord) {
+                        saveTrackPoint(locationData)
+                    }
                 }
+
+                // 7. 获取地址 (异步)
+                fetchLocationName(lat, lng)
 
             } catch (e: Exception) {
                 Log.e(TAG, "处理定位异常: ${e.message}")
@@ -486,14 +445,78 @@ class LocationRepository(
         }
     }
 
-    private fun evaluateQuality(hdop: Float): LocationQuality {
-        val used = _usedSatellites.value
-        return when {
-            hdop < 1.0f && used >= 8 -> LocationQuality.EXCELLENT
-            hdop < 2.0f && used >= 6 -> LocationQuality.GOOD
-            hdop < 4.0f && used >= 4 -> LocationQuality.FAIR
-            used >= 3 -> LocationQuality.POOR
-            else -> LocationQuality.BAD
+    /**
+     * 检查是否应该记录轨迹点
+     */
+    private fun checkShouldRecord(current: LocationData): Boolean {
+        // 1. 静止检测 - 速度小于阈值认为静止
+        val isCurrentlyStationary = current.speed < 0.3f
+        
+        if (isCurrentlyStationary) {
+            consecutiveStationaryCount++
+            // 连续5次静止判定为真正静止
+            if (consecutiveStationaryCount > 5) {
+                isMoving = false
+                Log.d(TAG, "🚶 静止状态检测到")
+                return false
+            }
+            return false
+        } else {
+            consecutiveStationaryCount = 0
+            isMoving = true
+        }
+
+        // 2. 距离检查 - 必须移动超过最小距离
+        if (lastRecordedLocation != null) {
+            val distance = haversine(
+                lastRecordedLocation!!.latitude,
+                lastRecordedLocation!!.longitude,
+                current.latitude,
+                current.longitude
+            )
+            
+            if (distance < MIN_RECORD_DISTANCE) {
+                Log.d(TAG, "⏭️ 移动距离不足: ${String.format("%.2f", distance)}m < ${MIN_RECORD_DISTANCE}m")
+                return false
+            }
+        }
+
+        Log.d(TAG, "✅ 记录轨迹点: lat=${current.latitude}, lng=${current.longitude}, speed=${current.speed}")
+        return true
+    }
+
+    private suspend fun saveTrackPoint(location: LocationData) {
+        try {
+            val track = TrackEntity(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = location.altitude,
+                speed = location.speed,
+                bearing = location.bearing,
+                accuracy = location.accuracy,
+                time = location.time,
+                satelliteCount = location.satelliteCount,
+                hdop = location.hdop,
+                pdop = location.pdop,
+                provider = location.provider,
+                isFromBackground = false
+            )
+            locationDao.insertTrackPoint(track)
+
+            // 更新缓存
+            lastRecordedLocation = track
+
+            // 更新轨迹点列表
+            val currentTracks = _trackPoints.value.toMutableList()
+            currentTracks.add(track)
+            if (currentTracks.size > 5000) {
+                currentTracks.removeAt(0)
+            }
+            _trackPoints.value = currentTracks
+            
+            Log.d(TAG, "📝 轨迹点已保存: 总数=${currentTracks.size}")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存轨迹异常: ${e.message}")
         }
     }
 
@@ -556,7 +579,6 @@ class LocationRepository(
                     featureName = featureName,
                     postalCode = address.postalCode ?: ""
                 )
-                Log.d(TAG, "📍 地址: $displayName")
             } else {
                 _locationName.value = "无法获取地址"
                 _detailedAddress.value = null
@@ -565,59 +587,6 @@ class LocationRepository(
             Log.e(TAG, "获取地址异常: ${e.message}")
             _locationName.value = "地址获取失败"
             _detailedAddress.value = null
-        }
-    }
-
-    private suspend fun saveLocationToDatabase(location: LocationData) {
-        try {
-            val entity = LocationEntity(
-                latitude = location.latitude,
-                longitude = location.longitude,
-                altitude = location.altitude,
-                accuracy = location.accuracy,
-                speed = location.speed,
-                bearing = location.bearing,
-                time = location.time,
-                provider = location.provider,
-                satelliteCount = location.satelliteCount,
-                hdop = location.hdop,
-                pdop = location.pdop,
-                vdop = location.vdop,
-                snr = location.snr,
-                quality = location.quality.name
-            )
-            locationDao.insertLocation(entity)
-        } catch (e: Exception) {
-            Log.e(TAG, "保存定位异常: ${e.message}")
-        }
-    }
-
-    private suspend fun saveTrackPoint(location: LocationData) {
-        try {
-            val track = TrackEntity(
-                latitude = location.latitude,
-                longitude = location.longitude,
-                altitude = location.altitude,
-                speed = location.speed,
-                bearing = location.bearing,
-                accuracy = location.accuracy,
-                time = location.time,
-                satelliteCount = location.satelliteCount,
-                hdop = location.hdop,
-                pdop = location.pdop,
-                provider = location.provider,
-                isFromBackground = false
-            )
-            locationDao.insertTrackPoint(track)
-
-            val currentTracks = _trackPoints.value.toMutableList()
-            currentTracks.add(track)
-            if (currentTracks.size > 1000) {
-                currentTracks.removeAt(0)
-            }
-            _trackPoints.value = currentTracks
-        } catch (e: Exception) {
-            Log.e(TAG, "保存轨迹异常: ${e.message}")
         }
     }
 
@@ -636,5 +605,16 @@ class LocationRepository(
     fun forceLocationUpdate() {
         Log.d(TAG, "手动触发位置更新")
         getLastKnownLocation()
+    }
+
+    /**
+     * Haversine公式计算距离
+     */
+    private fun haversine(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val R = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLng / 2).pow(2.0)
+        return R * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 }

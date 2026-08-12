@@ -17,19 +17,12 @@ object LocationQualityEvaluator {
         val hdop = location.hdop
         val accuracy = location.accuracy
 
-        // 综合评估
         return when {
-            // 优秀：高清卫星数 + 低HDOP + 高精度
             satelliteCount >= 8 && hdop < 2f && accuracy < 5f -> LocationQuality.EXCELLENT
-            // 良好
             satelliteCount >= 6 && hdop < 4f && accuracy < 10f -> LocationQuality.GOOD
-            // 一般
             satelliteCount >= 4 && hdop < 8f && accuracy < 20f -> LocationQuality.FAIR
-            // 较差
             satelliteCount >= 2 && hdop < 12f -> LocationQuality.POOR
-            // 很差
             satelliteCount < 2 || hdop >= 12f -> LocationQuality.BAD
-            // 默认
             else -> LocationQuality.UNKNOWN
         }
     }

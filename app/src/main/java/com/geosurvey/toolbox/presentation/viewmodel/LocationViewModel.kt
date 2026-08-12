@@ -36,10 +36,11 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     val satellites: StateFlow<List<SatelliteInfo>> = locationRepository.satellites
     val isTracking: StateFlow<Boolean> = locationRepository.isTracking
     val trackPoints = locationRepository.trackPoints
-    val locationName = locationRepository.locationName // 新增：地点名称
+    val locationName = locationRepository.locationName
+    val detailedAddress = locationRepository.detailedAddress  // 新增：详细地址
 
     init {
-        Log.d(TAG, "========== LocationViewModel initialized ==========")
+        Log.d(TAG, "========== LocationViewModel 初始化 ==========")
         startLocation()
     }
 
@@ -47,7 +48,7 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
      * 开始定位
      */
     fun startLocation() {
-        Log.d(TAG, "startLocation() called")
+        Log.d(TAG, "开始定位")
         locationRepository.startLocationUpdates()
     }
 
@@ -55,7 +56,7 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
      * 重新开始定位
      */
     fun restartLocation() {
-        Log.d(TAG, "restartLocation() called")
+        Log.d(TAG, "重新开始定位")
         locationRepository.stopLocationUpdates()
         viewModelScope.launch {
             kotlinx.coroutines.delay(500)

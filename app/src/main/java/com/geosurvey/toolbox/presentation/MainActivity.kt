@@ -1463,34 +1463,9 @@ fun AnalysisScreen(
             modifier = Modifier.weight(1f),
             onClick = {
                 showFullscreen {
-                    Column {
-                        Text("🕳️ 钻孔计算 & 绘制", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("📐 钻孔计算", fontSize = 18.sp)
-                                Text("输入钻孔参数进行计算", fontSize = 14.sp, color = Color.Gray)
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("📊 钻孔绘制", fontSize = 18.sp)
-                                Text("显示钻孔柱状图", fontSize = 14.sp, color = Color.Gray)
-                            }
-                        }
-                    }
+                    DrillingFullscreenContent(
+                        viewModel = viewModel
+                    )
                 }
             }
         ) {
@@ -1517,6 +1492,8 @@ fun AttitudeFullscreenContent(
     val coroutineScope = rememberCoroutineScope()
     var noteText by remember { mutableStateOf("") }
     var exportFileName by remember { mutableStateOf("产状记录") }
+    var calibrationOffset by remember { mutableStateOf(0f) }
+    var showCalibration by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1527,6 +1504,106 @@ fun AttitudeFullscreenContent(
         Text("📐 产状测量", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
         Text("将手机背面贴合岩层面", fontSize = 14.sp, color = Color(0xFF64748B))
         Text("⚡ 等待数据稳定后点击记录", fontSize = 12.sp, color = Color(0xFF94A3B8))
+
+        // 校正按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { showCalibration = !showCalibration },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF59E0B)
+                )
+            ) {
+                Text(if (showCalibration) "隐藏校正" else "🔧 手动校正", fontSize = 13.sp)
+            }
+            Text(
+                "偏移: ${String.format("%.0f", calibrationOffset)}°",
+                fontSize = 13.sp,
+                color = Color(0xFF64748B),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(8.dp)
+                    .background(Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                    .wrapContentSize(Alignment.Center)
+            )
+        }
+
+        if (showCalibration) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("🔧 手动校正", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("将手机贴合已知方向的岩面，调整偏移量", fontSize = 12.sp, color = Color(0xFF64748B))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { calibrationOffset = (calibrationOffset - 1 + 360) % 360 },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFEF4444)
+                            )
+                        ) {
+                            Text("-1°")
+                        }
+                        Button(
+                            onClick = { calibrationOffset = (calibrationOffset - 10 + 360) % 360 },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFEF4444)
+                            )
+                        ) {
+                            Text("-10°")
+                        }
+                        Text(
+                            "${String.format("%.0f", calibrationOffset)}°",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f).wrapContentSize(Alignment.Center)
+                        )
+                        Button(
+                            onClick = { calibrationOffset = (calibrationOffset + 10) % 360 },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981)
+                            )
+                        ) {
+                            Text("+10°")
+                        }
+                        Button(
+                            onClick = { calibrationOffset = (calibrationOffset + 1) % 360 },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981)
+                            )
+                        ) {
+                            Text("+1°")
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.setCalibrationOffset(calibrationOffset)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0EA5E9)
+                        )
+                    ) {
+                        Text("应用校正", fontSize = 13.sp)
+                    }
+                }
+            }
+        }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -1573,7 +1650,7 @@ fun AttitudeFullscreenContent(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 美化版指南针
+                    // 简化指南针
                     AttitudeCompass(
                         dipDirection = currentAttitude.dipDirection,
                         dip = currentAttitude.dip
@@ -1773,12 +1850,12 @@ private fun shareCSV(context: Context, csvData: String, fileName: String) {
     }
 }
 
-// --- 15. 美化版指南针 ---
+// --- 15. 简化版指南针（移除数字） ---
 @Composable
 fun AttitudeCompass(dipDirection: Float, dip: Float) {
     Box(
         modifier = Modifier
-            .size(140.dp)
+            .size(120.dp)
             .background(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -1787,18 +1864,18 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                     ),
                     radius = 1f
                 ),
-                shape = RoundedCornerShape(70)
+                shape = RoundedCornerShape(60)
             )
             .shadow(
                 elevation = 8.dp,
-                shape = RoundedCornerShape(70),
+                shape = RoundedCornerShape(60),
                 ambientColor = Color(0xFF0EA5E9).copy(alpha = 0.2f)
             ),
         contentAlignment = Alignment.Center
     ) {
         Canvas(
             modifier = Modifier
-                .size(130.dp)
+                .size(110.dp)
         ) {
             val centerX = size.width / 2f
             val centerY = size.height / 2f
@@ -1822,7 +1899,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
             // 内圈
             drawCircle(
                 color = Color(0xFF64748B).copy(alpha = 0.2f),
-                radius = radius * 0.75f,
+                radius = radius * 0.7f,
                 center = Offset(centerX, centerY),
                 style = Stroke(width = 1f)
             )
@@ -1830,8 +1907,8 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
             // 十字线
             for (i in 0..3) {
                 val angle = i * PI / 2
-                val endX = centerX + radius * 0.75f * cos(angle).toFloat()
-                val endY = centerY + radius * 0.75f * sin(angle).toFloat()
+                val endX = centerX + radius * 0.7f * cos(angle).toFloat()
+                val endY = centerY + radius * 0.7f * sin(angle).toFloat()
                 drawLine(
                     color = Color(0xFF64748B).copy(alpha = 0.15f),
                     start = Offset(centerX, centerY),
@@ -1857,7 +1934,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                                 else -> "#64748B"
                             }
                         )
-                        textSize = if (i == 0) 16f else 12f
+                        textSize = if (i == 0) 14f else 11f
                         textAlign = android.graphics.Paint.Align.CENTER
                         typeface = if (i == 0) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
                     }
@@ -1865,20 +1942,20 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                 }
             }
             
-            // 刻度线
-            for (i in 0..35) {
-                val angle = i * PI / 18 - PI / 2
-                val innerRadius = if (i % 5 == 0) radius - 10f else radius - 5f
+            // 刻度线 (简化为每30度)
+            for (i in 0..11) {
+                val angle = i * PI / 6 - PI / 2
+                val innerRadius = if (i % 3 == 0) radius - 10f else radius - 5f
                 val outerRadius = radius - 2f
                 val startX = centerX + innerRadius * cos(angle).toFloat()
                 val startY = centerY + innerRadius * sin(angle).toFloat()
                 val endX = centerX + outerRadius * cos(angle).toFloat()
                 val endY = centerY + outerRadius * sin(angle).toFloat()
                 drawLine(
-                    color = if (i % 5 == 0) Color.White else Color(0xFF64748B).copy(alpha = 0.4f),
+                    color = if (i % 3 == 0) Color.White else Color(0xFF64748B).copy(alpha = 0.4f),
                     start = Offset(startX, startY),
                     end = Offset(endX, endY),
-                    strokeWidth = if (i % 5 == 0) 2f else 1f
+                    strokeWidth = if (i % 3 == 0) 2f else 1f
                 )
             }
             
@@ -1893,7 +1970,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                 color = Color(0xFFEF4444).copy(alpha = 0.2f),
                 start = Offset(centerX, centerY),
                 end = Offset(endX, endY),
-                strokeWidth = 16f
+                strokeWidth = 14f
             )
             
             // 指针主体
@@ -1901,19 +1978,19 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                 color = Color(0xFFEF4444),
                 start = Offset(centerX, centerY),
                 end = Offset(endX, endY),
-                strokeWidth = 4f
+                strokeWidth = 3f
             )
             
             // 指针头部三角
             val headAngle = angleRad
-            val headLength = 10f
+            val headLength = 8f
             val headX = endX - headLength * cos(headAngle).toFloat()
             val headY = endY - headLength * sin(headAngle).toFloat()
             
             val path = Path()
             path.moveTo(endX, endY)
-            path.lineTo(headX - 5 * sin(headAngle).toFloat(), headY + 5 * cos(headAngle).toFloat())
-            path.lineTo(headX + 5 * sin(headAngle).toFloat(), headY - 5 * cos(headAngle).toFloat())
+            path.lineTo(headX - 4 * sin(headAngle).toFloat(), headY + 4 * cos(headAngle).toFloat())
+            path.lineTo(headX + 4 * sin(headAngle).toFloat(), headY - 4 * cos(headAngle).toFloat())
             path.close()
             
             drawPath(
@@ -1924,54 +2001,300 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
             // 中心装饰圆
             drawCircle(
                 color = Color(0xFF0EA5E9),
-                radius = 8f,
+                radius = 6f,
                 center = Offset(centerX, centerY)
             )
             drawCircle(
                 color = Color(0xFFFFFFFF),
-                radius = 3f,
+                radius = 2f,
                 center = Offset(centerX, centerY)
             )
-            
-            // 外圈刻度数字 (每30度)
-            for (i in 0..11) {
-                val angle = i * PI / 6 - PI / 2
-                val numRadius = radius + 12f
-                val x = centerX + numRadius * cos(angle).toFloat()
-                val y = centerY + numRadius * sin(angle).toFloat()
-                val value = (i * 30)
-                drawContext.canvas.nativeCanvas.apply {
-                    val paint = android.graphics.Paint().apply {
-                        color = android.graphics.Color.parseColor("#94A3B8")
-                        textSize = 10f
-                        textAlign = android.graphics.Paint.Align.CENTER
-                    }
-                    drawText("$value", x, y + 4, paint)
-                }
-            }
         }
         
-        // 倾向数值显示
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "${String.format("%.0f", dipDirection)}°",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFFFFFFF)
-            )
-            Text(
-                "倾向 ${String.format("%.0f", dip)}°",
-                fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
-            )
-        }
+        // 倾向数值显示 (在指南针下方)
+        Text(
+            "${String.format("%.0f", dipDirection)}°",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFFFFFFF),
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 
-// --- 16. 赤平投影和玫瑰花图全屏内容 ---
+// --- 16. 钻孔计算与绘制 ---
+@Composable
+fun DrillingFullscreenContent(
+    viewModel: LocationViewModel
+) {
+    var holeX by remember { mutableStateOf("") }
+    var holeY by remember { mutableStateOf("") }
+    var holeZ by remember { mutableStateOf("") }
+    var azimuth by remember { mutableStateOf("") }
+    var dipAngle by remember { mutableStateOf("") }
+    var holeDepth by remember { mutableStateOf("") }
+    
+    var resultX by remember { mutableStateOf("") }
+    var resultY by remember { mutableStateOf("") }
+    var resultZ by remember { mutableStateOf("") }
+    var horizontalDistance by remember { mutableStateOf("") }
+    var verticalDistance by remember { mutableStateOf("") }
+    var totalDistance by remember { mutableStateOf("") }
+    var showResult by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("🕳️ 钻孔计算 & 绘制", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+        Text("输入钻孔参数进行计算", fontSize = 14.sp, color = Color(0xFF64748B))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("📝 输入参数", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = holeX,
+                        onValueChange = { holeX = it },
+                        label = { Text("孔口X (m)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                    OutlinedTextField(
+                        value = holeY,
+                        onValueChange = { holeY = it },
+                        label = { Text("孔口Y (m)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = holeZ,
+                        onValueChange = { holeZ = it },
+                        label = { Text("孔口Z (m)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                    OutlinedTextField(
+                        value = azimuth,
+                        onValueChange = { azimuth = it },
+                        label = { Text("方位角 (°)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = dipAngle,
+                        onValueChange = { dipAngle = it },
+                        label = { Text("倾角 (°)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                    OutlinedTextField(
+                        value = holeDepth,
+                        onValueChange = { holeDepth = it },
+                        label = { Text("孔深 (m)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                }
+            }
+        }
+
+        Button(
+            onClick = {
+                try {
+                    val x = holeX.toDoubleOrNull() ?: 0.0
+                    val y = holeY.toDoubleOrNull() ?: 0.0
+                    val z = holeZ.toDoubleOrNull() ?: 0.0
+                    val az = Math.toRadians(azimuth.toDoubleOrNull() ?: 0.0)
+                    val dip = Math.toRadians(dipAngle.toDoubleOrNull() ?: 0.0)
+                    val depth = holeDepth.toDoubleOrNull() ?: 0.0
+                    
+                    val horizontal = depth * cos(dip)
+                    val vertical = depth * sin(dip)
+                    
+                    val endX = x + horizontal * sin(az)
+                    val endY = y + horizontal * cos(az)
+                    val endZ = z - vertical
+                    
+                    resultX = String.format("%.2f", endX)
+                    resultY = String.format("%.2f", endY)
+                    resultZ = String.format("%.2f", endZ)
+                    horizontalDistance = String.format("%.2f", horizontal)
+                    verticalDistance = String.format("%.2f", vertical)
+                    totalDistance = String.format("%.2f", depth)
+                    showResult = true
+                } catch (e: Exception) {
+                    showResult = false
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF0EA5E9)
+            )
+        ) {
+            Text("📐 计算", fontSize = 16.sp)
+        }
+
+        if (showResult) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("📊 计算结果", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                    Text("孔底X: $resultX m", fontSize = 14.sp)
+                    Text("孔底Y: $resultY m", fontSize = 14.sp)
+                    Text("孔底Z: $resultZ m", fontSize = 14.sp)
+                    Text("水平位移: $horizontalDistance m", fontSize = 14.sp)
+                    Text("垂直位移: $verticalDistance m", fontSize = 14.sp)
+                    Text("总孔深: $totalDistance m", fontSize = 14.sp)
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 钻孔示意图
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                    ) {
+                        val padding = 20f
+                        val chartWidth = size.width - padding * 2
+                        val chartHeight = size.height - padding * 2
+                        
+                        // 坐标轴
+                        drawLine(
+                            color = Color(0xFF1E293B),
+                            start = Offset(padding, padding + chartHeight),
+                            end = Offset(padding + chartWidth, padding + chartHeight),
+                            strokeWidth = 2f
+                        )
+                        drawLine(
+                            color = Color(0xFF1E293B),
+                            start = Offset(padding, padding + chartHeight),
+                            end = Offset(padding, padding),
+                            strokeWidth = 2f
+                        )
+                        
+                        // 标签
+                        drawContext.canvas.nativeCanvas.apply {
+                            val paint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#64748B")
+                                textSize = 12f
+                            }
+                            drawText("水平", padding + chartWidth - 20, padding + chartHeight + 20, paint)
+                            drawText("垂直", 4f, padding + 20, paint)
+                        }
+                        
+                        // 钻孔路径
+                        val horiz = horizontalDistance.toDoubleOrNull() ?: 1.0
+                        val vert = verticalDistance.toDoubleOrNull() ?: 1.0
+                        val maxVal = max(horiz, vert)
+                        val scale = if (maxVal > 0) min(chartWidth, chartHeight) / maxVal * 0.8 else 1.0
+                        
+                        val startX = padding + 20
+                        val startY = padding + chartHeight - 20
+                        val endX = startX + (horiz * scale).toFloat()
+                        val endY = startY - (vert * scale).toFloat()
+                        
+                        // 钻孔线
+                        drawLine(
+                            color = Color(0xFF0EA5E9),
+                            start = Offset(startX, startY),
+                            end = Offset(endX.toFloat(), endY.toFloat()),
+                            strokeWidth = 4f
+                        )
+                        
+                        // 起点标记
+                        drawCircle(
+                            color = Color(0xFF10B981),
+                            radius = 6f,
+                            center = Offset(startX, startY)
+                        )
+                        drawContext.canvas.nativeCanvas.apply {
+                            val paint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#10B981")
+                                textSize = 11f
+                            }
+                            drawText("起点", startX - 12, startY + 20, paint)
+                        }
+                        
+                        // 终点标记
+                        drawCircle(
+                            color = Color(0xFFEF4444),
+                            radius = 6f,
+                            center = Offset(endX.toFloat(), endY.toFloat())
+                        )
+                        drawContext.canvas.nativeCanvas.apply {
+                            val paint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#EF4444")
+                                textSize = 11f
+                            }
+                            drawText("终点", endX - 10, endY - 12, paint)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "点击外部关闭",
+            fontSize = 11.sp,
+            color = Color(0xFF94A3B8),
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+}
+
+// --- 17. 赤平投影和玫瑰花图全屏内容 ---
 @Composable
 fun ProjectionFullscreenContent(
     viewModel: LocationViewModel,
@@ -2082,18 +2405,18 @@ fun ProjectionFullscreenContent(
                                 )
                                 Column {
                                     Text(
-                                        "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}° 走向:${String.format("%.0f", attitude.strike)}°",
+                                        "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}°",
                                         fontSize = 12.sp
                                     )
                                     Text(
-                                        "${android.text.format.DateFormat.format("HH:mm", attitude.time)}",
+                                        "走向:${String.format("%.0f", attitude.strike)}°",
                                         fontSize = 10.sp,
-                                        color = Color(0xFF94A3B8)
+                                        color = Color(0xFF64748B)
                                     )
                                 }
                             }
                             Text(
-                                "📍 ${String.format("%.4f", attitude.latitude)}",
+                                "${android.text.format.DateFormat.format("HH:mm", attitude.time)}",
                                 fontSize = 10.sp,
                                 color = Color(0xFF94A3B8)
                             )
@@ -2167,7 +2490,7 @@ fun ProjectionFullscreenContent(
     }
 }
 
-// --- 17. 赤平投影图 ---
+// --- 18. 赤平投影图 ---
 @Composable
 fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
     Card(
@@ -2294,7 +2617,7 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
     }
 }
 
-// --- 18. 玫瑰花图 ---
+// --- 19. 玫瑰花图 ---
 @Composable
 fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
     Card(
@@ -2436,7 +2759,7 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
     }
 }
 
-// --- 19. RecordScreen ---
+// --- 20. RecordScreen ---
 @Composable
 fun RecordScreen(
     state: RecordScreenState,
@@ -2484,7 +2807,7 @@ fun RecordScreen(
     }
 }
 
-// --- 20. CameraScreen ---
+// --- 21. CameraScreen ---
 @Composable
 fun CameraScreen(
     state: CameraScreenState,
@@ -2534,7 +2857,7 @@ fun CameraScreen(
     }
 }
 
-// --- 21. 预览 ---
+// --- 22. 预览 ---
 @Preview(showBackground = true)
 @Composable
 fun PreviewMainScreen() {

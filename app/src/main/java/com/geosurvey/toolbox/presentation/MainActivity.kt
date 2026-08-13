@@ -11,10 +11,12 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -29,10 +31,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,7 +57,6 @@ import com.geosurvey.toolbox.data.repository.AttitudeData
 import com.geosurvey.toolbox.data.repository.DrillSampleData
 import com.geosurvey.toolbox.data.repository.SampleData
 import com.geosurvey.toolbox.domain.model.Constellation
-import com.geosurvey.toolbox.domain.model.LocationQuality
 import com.geosurvey.toolbox.presentation.viewmodel.LocationUiState
 import com.geosurvey.toolbox.presentation.viewmodel.LocationViewModel
 import com.geosurvey.toolbox.utils.CameraHelper
@@ -3441,6 +3445,7 @@ fun DrillSampleFullscreenContent(
 }
 
 // --- 23. CameraScreen ---
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraScreen(
     state: CameraScreenState,
@@ -3523,6 +3528,7 @@ fun CameraScreen(
 }
 
 // --- 24. 水印相机全屏内容 ---
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun WatermarkCameraFullscreenContent(
     viewModel: LocationViewModel,

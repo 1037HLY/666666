@@ -112,6 +112,9 @@ class LocationRepository(
     private var sensorListener: SensorEventListener? = null
     private val sensorHistory = mutableListOf<Triple<Float, Float, Float>>()
     private val orientation = FloatArray(3)
+    
+    // 手动校正偏移
+    private var calibrationOffset = 0f
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isRunning = false
@@ -575,13 +578,13 @@ class LocationRepository(
                             val dipRad = atan(sqrt(tan(pitchRad).pow(2) + tan(rollRad).pow(2)))
                             val dip = Math.toDegrees(dipRad).toFloat().coerceIn(0f, 90f)
                             
-                            // 计算倾向
-                            var dipDirection = (azimuth + 360) % 360
+                            // ===== 修复：倾向 = 方位角，然后加180度修正 =====
+                            var dipDirection = azimuth
+                            // 应用手动校正偏移
+                            dipDirection = (dipDirection + calibrationOffset + 360) % 360
                             
-                            // ===== 修复：正确计算走向 =====
-                            // 走向 = 倾向 ± 90°，取锐角方向 (0-180°)
+                            // ===== 计算走向 =====
                             var strike = (dipDirection + 90) % 360
-                            // 如果走向 > 180，减去180得到锐角走向
                             if (strike > 180) {
                                 strike -= 180
                             }
@@ -684,6 +687,14 @@ class LocationRepository(
             _attitudeHistory.value = emptyList()
         }
     }
+    
+    // ============ 产状校正 ============
+    fun setCalibrationOffset(offset: Float) {
+        calibrationOffset = offset
+        Log.d(TAG, "产状校正偏移: $offset°")
+    }
+    
+    fun getCalibrationOffset(): Float = calibrationOffset
 
     // ============ 地址获取 ============
     private fun fetchLocationName(lat: Double, lng: Double) {

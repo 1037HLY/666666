@@ -3,9 +3,6 @@ package com.geosurvey.toolbox.data.database
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/**
- * 普通样本实体
- */
 @Entity(tableName = "samples")
 data class SampleEntity(
     @PrimaryKey(autoGenerate = true)

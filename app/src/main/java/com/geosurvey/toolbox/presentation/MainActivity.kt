@@ -179,7 +179,7 @@ fun MainScreen(
         }
     }
 
-    // 全屏对话框 - 点击外部关闭
+    // 全屏对话框
     fullscreenContent?.let { content ->
         Dialog(
             onDismissRequest = { fullscreenContent = null },
@@ -1526,8 +1526,8 @@ fun AttitudeFullscreenContent(
     ) {
         Text("📐 产状测量", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
         Text("将手机背面贴合岩层面", fontSize = 14.sp, color = Color(0xFF64748B))
+        Text("⚡ 等待数据稳定后点击记录", fontSize = 12.sp, color = Color(0xFF94A3B8))
 
-        // 当前测量值
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
@@ -1546,7 +1546,7 @@ fun AttitudeFullscreenContent(
                             Text("倾向", fontSize = 12.sp, color = Color(0xFF64748B))
                             Text(
                                 "${String.format("%.0f", currentAttitude.dipDirection)}°",
-                                fontSize = 24.sp,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0EA5E9)
                             )
@@ -1555,7 +1555,7 @@ fun AttitudeFullscreenContent(
                             Text("倾角", fontSize = 12.sp, color = Color(0xFF64748B))
                             Text(
                                 "${String.format("%.0f", currentAttitude.dip)}°",
-                                fontSize = 24.sp,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF10B981)
                             )
@@ -1564,7 +1564,7 @@ fun AttitudeFullscreenContent(
                             Text("走向", fontSize = 12.sp, color = Color(0xFF64748B))
                             Text(
                                 "${String.format("%.0f", currentAttitude.strike)}°",
-                                fontSize = 24.sp,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFFF9800)
                             )
@@ -1573,7 +1573,6 @@ fun AttitudeFullscreenContent(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 美化后的指南针
                     AttitudeCompass(dipDirection = currentAttitude.dipDirection)
                     
                     if (currentLocation != null) {
@@ -1592,12 +1591,12 @@ fun AttitudeFullscreenContent(
                     CircularProgressIndicator(modifier = Modifier.size(32.dp), color = Color(0xFF0EA5E9))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("正在测量...", fontSize = 14.sp, color = Color.Gray)
-                    Text("请将手机贴合岩面", fontSize = 12.sp, color = Color.Gray)
+                    Text("请将手机背面贴合岩面", fontSize = 12.sp, color = Color.Gray)
+                    Text("保持手机稳定", fontSize = 11.sp, color = Color(0xFF94A3B8))
                 }
             }
         }
 
-        // 备注输入和记录按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1627,7 +1626,6 @@ fun AttitudeFullscreenContent(
             }
         }
 
-        // 历史记录 - 直接展示，可滑动，长按可编辑（长按功能暂用点击代替）
         Text(
             "📋 历史记录 (${attitudeHistory.size}组)",
             fontSize = 14.sp,
@@ -1640,7 +1638,7 @@ fun AttitudeFullscreenContent(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 200.dp),
+                    .heightIn(max = 150.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -1657,14 +1655,14 @@ fun AttitudeFullscreenContent(
                                     if (attitude.note.isNotEmpty()) Color(0xFFE8F5E9) else Color.Transparent,
                                     RoundedCornerShape(4.dp)
                                 )
-                                .padding(8.dp)
+                                .padding(6.dp)
                                 .clickable {
-                                    // 长按编辑功能简化：点击可复制备注到输入框
                                     if (attitude.note.isNotEmpty()) {
                                         noteText = attitude.note
                                     }
                                 },
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
                                 Text(
@@ -1672,21 +1670,25 @@ fun AttitudeFullscreenContent(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
-                                Text(
-                                    "${android.text.format.DateFormat.format("HH:mm:ss", attitude.time)}",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF64748B)
-                                )
-                                if (attitude.note.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Text(
-                                        "📝 ${attitude.note}",
+                                        "${android.text.format.DateFormat.format("HH:mm:ss", attitude.time)}",
                                         fontSize = 11.sp,
-                                        color = Color(0xFF475569)
+                                        color = Color(0xFF64748B)
                                     )
+                                    if (attitude.note.isNotEmpty()) {
+                                        Text(
+                                            "📝 ${attitude.note}",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF475569)
+                                        )
+                                    }
                                 }
                             }
                             Text(
-                                "📍 ${String.format("%.4f", attitude.latitude)}, ${String.format("%.4f", attitude.longitude)}",
+                                "📍 ${String.format("%.4f", attitude.latitude)}",
                                 fontSize = 10.sp,
                                 color = Color(0xFF94A3B8)
                             )
@@ -1699,7 +1701,6 @@ fun AttitudeFullscreenContent(
             Text("暂无记录", fontSize = 13.sp, color = Color(0xFF94A3B8))
         }
 
-        // 导出CSV按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1782,14 +1783,12 @@ fun AttitudeCompass(dipDirection: Float) {
         val centerY = size.height / 2f
         val radius = size.width / 2f - 8f
         
-        // 外圈发光效果
         drawCircle(
             color = Color(0xFF0EA5E9).copy(alpha = 0.15f),
             radius = radius + 8f,
             center = Offset(centerX, centerY)
         )
         
-        // 外圈
         drawCircle(
             color = Color(0xFF64748B),
             radius = radius,
@@ -1797,7 +1796,6 @@ fun AttitudeCompass(dipDirection: Float) {
             style = Stroke(width = 2f)
         )
         
-        // 内圈
         drawCircle(
             color = Color(0xFF64748B).copy(alpha = 0.3f),
             radius = radius * 0.7f,
@@ -1805,7 +1803,6 @@ fun AttitudeCompass(dipDirection: Float) {
             style = Stroke(width = 1f)
         )
         
-        // 十字线
         for (i in 0..3) {
             val angle = i * PI / 2
             val endX = centerX + radius * 0.7f * cos(angle).toFloat()
@@ -1818,7 +1815,6 @@ fun AttitudeCompass(dipDirection: Float) {
             )
         }
         
-        // 方向刻度
         val directions = listOf("N", "E", "S", "W")
         for (i in 0..3) {
             val angle = i * PI / 2 - PI / 2
@@ -1838,7 +1834,6 @@ fun AttitudeCompass(dipDirection: Float) {
             }
         }
         
-        // 刻度线
         for (i in 0..35) {
             val angle = i * PI / 18 - PI / 2
             val innerRadius = if (i % 5 == 0) radius - 12f else radius - 6f
@@ -1855,13 +1850,11 @@ fun AttitudeCompass(dipDirection: Float) {
             )
         }
         
-        // 指针
         val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
         val pointerLength = radius * 0.65f
         val endX = centerX + pointerLength * cos(angleRad).toFloat()
         val endY = centerY + pointerLength * sin(angleRad).toFloat()
         
-        // 指针发光效果
         drawLine(
             color = Color(0xFFEF4444).copy(alpha = 0.3f),
             start = Offset(centerX, centerY),
@@ -1869,7 +1862,6 @@ fun AttitudeCompass(dipDirection: Float) {
             strokeWidth = 12f
         )
         
-        // 指针主体
         drawLine(
             color = Color(0xFFEF4444),
             start = Offset(centerX, centerY),
@@ -1877,7 +1869,6 @@ fun AttitudeCompass(dipDirection: Float) {
             strokeWidth = 4f
         )
         
-        // 指针头部三角
         val headAngle = angleRad
         val headLength = 12f
         val headX = endX - headLength * cos(headAngle).toFloat()
@@ -1894,7 +1885,6 @@ fun AttitudeCompass(dipDirection: Float) {
             color = Color(0xFFEF4444)
         )
         
-        // 中心点
         drawCircle(
             color = Color(0xFF0EA5E9),
             radius = 6f,
@@ -1906,7 +1896,6 @@ fun AttitudeCompass(dipDirection: Float) {
             center = Offset(centerX, centerY)
         )
         
-        // 数值显示
         drawContext.canvas.nativeCanvas.apply {
             val paint = android.graphics.Paint().apply {
                 color = android.graphics.Color.parseColor("#FFFFFF")
@@ -1937,7 +1926,6 @@ fun ProjectionFullscreenContent(
     ) {
         Text("📊 赤平投影 & 玫瑰花图", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
 
-        // Tab切换
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1977,14 +1965,12 @@ fun ProjectionFullscreenContent(
                 }
             }
         } else {
-            // 数据选择
             Text(
                 "选择数据 (${selectedIndices.size}/${attitudeHistory.size})",
                 fontSize = 13.sp,
                 color = Color(0xFF64748B)
             )
             
-            // 数据列表 - 可滑动选择
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2054,14 +2040,12 @@ fun ProjectionFullscreenContent(
                 }
             }
 
-            // 绘图按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = {
-                        // 全选
                         selectedIndices = attitudeHistory.indices.toSet()
                     },
                     modifier = Modifier.weight(1f),
@@ -2084,7 +2068,7 @@ fun ProjectionFullscreenContent(
                 }
                 Button(
                     onClick = {
-                        // 使用选中的数据绘图
+                        // 更新图表
                     },
                     modifier = Modifier.weight(2f),
                     colors = ButtonDefaults.buttonColors(
@@ -2096,14 +2080,12 @@ fun ProjectionFullscreenContent(
                 }
             }
 
-            // 绘图区域
             val selectedData = selectedIndices.map { attitudeHistory[it] }
             when (selectedTab) {
                 0 -> StereographicProjectionChart(attitudeHistory = selectedData)
                 1 -> RoseDiagramChart(attitudeHistory = selectedData)
             }
             
-            // 显示当前使用的数据量
             Text(
                 "当前图表使用 ${selectedData.size} 组数据",
                 fontSize = 11.sp,

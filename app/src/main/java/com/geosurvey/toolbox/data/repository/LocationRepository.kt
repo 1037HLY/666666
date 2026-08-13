@@ -32,13 +32,13 @@ import kotlin.math.*
 
 data class AttitudeData(
     val id: Long = 0,
-    val strike: Float,
-    val dip: Float,
-    val dipDirection: Float,
-    val latitude: Double,
-    val longitude: Double,
-    val altitude: Double,
-    val time: Long,
+    val strike: Float = 0f,
+    val dip: Float = 0f,
+    val dipDirection: Float = 0f,
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val altitude: Double = 0.0,
+    val time: Long = 0,
     val note: String = ""
 )
 
@@ -48,11 +48,9 @@ class LocationRepository(
 ) {
     companion object {
         private const val TAG = "LocationRepository"
-        private const val STATIONARY_THRESHOLD = 2.0
-        private const val MIN_RECORD_DISTANCE = 1.0
         private const val MIN_SATELLITES = 4
         private const val MIN_SNR = 15.0f
-        private const val MAX_HISTORY_SIZE = 30
+        private const val MAX_HISTORY_SIZE = 20
     }
 
     private val locationManager: LocationManager by lazy {
@@ -63,7 +61,7 @@ class LocationRepository(
         context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     }
 
-    // ===== 定位状态流 =====
+    // ===== 状态流 =====
     private val _currentLocation = MutableStateFlow<LocationData?>(null)
     val currentLocation: StateFlow<LocationData?> = _currentLocation.asStateFlow()
 
@@ -82,7 +80,7 @@ class LocationRepository(
     private val _detailedAddress = MutableStateFlow<DetailedAddress?>(null)
     val detailedAddress: StateFlow<DetailedAddress?> = _detailedAddress.asStateFlow()
 
-    // ===== 导航状态流 =====
+    // ===== 导航状态 =====
     private val _navigationTarget = MutableStateFlow<TrackEntity?>(null)
     val navigationTarget: StateFlow<TrackEntity?> = _navigationTarget.asStateFlow()
     
@@ -95,26 +93,19 @@ class LocationRepository(
     private val _isNavigating = MutableStateFlow(false)
     val isNavigating: StateFlow<Boolean> = _isNavigating.asStateFlow()
 
-    // ===== 产状状态流 =====
+    // ===== 产状状态 =====
     private val _currentAttitude = MutableStateFlow<AttitudeData?>(null)
     val currentAttitude: StateFlow<AttitudeData?> = _currentAttitude.asStateFlow()
     
     private val _attitudeHistory = MutableStateFlow<List<AttitudeData>>(emptyList())
     val attitudeHistory: StateFlow<List<AttitudeData>> = _attitudeHistory.asStateFlow()
 
-    // ===== GNSS质量参数 =====
+    // ===== 内部变量 =====
     private var satelliteCount = 0
     private var usedSatelliteCount = 0
     private var avgSnr = 0.0f
-    private var gpsCount = 0
-    private var glonassCount = 0
-    private var galileoCount = 0
-    private var beidouCount = 0
-
-    // ===== 轨迹记录缓存 =====
+    
     private var lastRecordedLocation: TrackEntity? = null
-    private var lastValidLocation: LocationData? = null
-    private var isMoving = false
     private var consecutiveStationaryCount = 0
 
     // ===== 产状测量 =====
@@ -122,7 +113,6 @@ class LocationRepository(
     private val sensorHistory = mutableListOf<Triple<Float, Float, Float>>()
     private val orientation = FloatArray(3)
 
-    // ===== 协程 =====
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isRunning = false
     private var gpsListener: LocationListener? = null
@@ -161,15 +151,9 @@ class LocationRepository(
 
     private fun analyzeGnssStatus(status: android.location.GnssStatus) {
         val satelliteList = mutableListOf<SatelliteInfo>()
-        
-        gpsCount = 0
-        glonassCount = 0
-        galileoCount = 0
-        beidouCount = 0
-        
+        var usedCount = 0
         var totalSnr = 0.0f
         var validSnrCount = 0
-        var usedCount = 0
         
         for (i in 0 until status.satelliteCount) {
             val prn = status.getSvid(i)
@@ -185,10 +169,10 @@ class LocationRepository(
             }
             
             val constellation = when (status.getConstellationType(i)) {
-                GnssStatus.CONSTELLATION_GPS -> { gpsCount++; Constellation.GPS }
-                GnssStatus.CONSTELLATION_GLONASS -> { glonassCount++; Constellation.GLONASS }
-                GnssStatus.CONSTELLATION_GALILEO -> { galileoCount++; Constellation.GALILEO }
-                GnssStatus.CONSTELLATION_BEIDOU -> { beidouCount++; Constellation.BEIDOU }
+                GnssStatus.CONSTELLATION_GPS -> Constellation.GPS
+                GnssStatus.CONSTELLATION_GLONASS -> Constellation.GLONASS
+                GnssStatus.CONSTELLATION_GALILEO -> Constellation.GALILEO
+                GnssStatus.CONSTELLATION_BEIDOU -> Constellation.BEIDOU
                 else -> Constellation.UNKNOWN
             }
 
@@ -209,7 +193,6 @@ class LocationRepository(
         avgSnr = if (validSnrCount > 0) totalSnr / validSnrCount else 0f
         
         _satellites.value = satelliteList
-        
         Log.d(TAG, "🛰️ 卫星: 总数=$satelliteCount, 锁定=$usedCount, SNR=${String.format("%.1f", avgSnr)}dB")
     }
 
@@ -363,16 +346,6 @@ class LocationRepository(
                     return@launch
                 }
                 
-                if (avgSnr < MIN_SNR && usedSatelliteCount < 6) {
-                    Log.d(TAG, "⚠️ 信噪比过低: ${String.format("%.1f", avgSnr)}dB")
-                    return@launch
-                }
-
-                if (location.accuracy > 20) {
-                    Log.d(TAG, "⚠️ 精度过低: ${location.accuracy}m > 20m")
-                    return@launch
-                }
-
                 val locationData = LocationData(
                     latitude = lat,
                     longitude = lng,
@@ -391,10 +364,11 @@ class LocationRepository(
                 )
 
                 _currentLocation.value = locationData
-                lastValidLocation = locationData
 
+                // 更新导航
                 updateNavigation(locationData)
 
+                // 轨迹记录
                 if (_isTracking.value) {
                     val shouldRecord = checkShouldRecord(locationData)
                     if (shouldRecord) {
@@ -402,6 +376,7 @@ class LocationRepository(
                     }
                 }
 
+                // 获取地址
                 fetchLocationName(lat, lng)
 
             } catch (e: Exception) {
@@ -414,7 +389,6 @@ class LocationRepository(
     fun startTracking() {
         _isTracking.value = true
         lastRecordedLocation = null
-        lastValidLocation = null
         consecutiveStationaryCount = 0
         Log.d(TAG, "轨迹记录已开始")
     }
@@ -448,14 +422,12 @@ class LocationRepository(
         if (isCurrentlyStationary) {
             consecutiveStationaryCount++
             if (consecutiveStationaryCount > 5) {
-                isMoving = false
-                Log.d(TAG, "🚶 静止状态检测到")
+                Log.d(TAG, "🚶 静止状态，不记录")
                 return false
             }
             return false
         } else {
             consecutiveStationaryCount = 0
-            isMoving = true
         }
 
         if (lastRecordedLocation != null) {
@@ -466,13 +438,13 @@ class LocationRepository(
                 current.longitude
             )
             
-            if (distance < MIN_RECORD_DISTANCE) {
+            if (distance < 1.0) {
                 Log.d(TAG, "⏭️ 移动距离不足: ${String.format("%.2f", distance)}m")
                 return false
             }
         }
 
-        Log.d(TAG, "✅ 记录轨迹点: lat=${current.latitude}, lng=${current.longitude}")
+        Log.d(TAG, "✅ 记录轨迹点")
         return true
     }
 
@@ -513,11 +485,6 @@ class LocationRepository(
     fun setNavigationTarget(track: TrackEntity?) {
         _navigationTarget.value = track
         _isNavigating.value = track != null
-        if (track != null) {
-            Log.d(TAG, "🧭 导航目标已设置")
-        } else {
-            Log.d(TAG, "🧭 导航已取消")
-        }
     }
 
     private fun updateNavigation(currentLocation: LocationData) {
@@ -545,13 +512,12 @@ class LocationRepository(
         _navigationBearing.value = (bearing + 360) % 360
     }
 
-    // ============ 产状测量 - 完全重写 ============
+    // ============ 产状测量 - 简化稳定版 ============
     fun startAttitudeMeasurement() {
-        Log.d(TAG, "启动精确产状测量 (传感器融合)")
+        Log.d(TAG, "启动产状测量")
         
         val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-        val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         
         if (accelerometer == null || magnetometer == null) {
             Log.e(TAG, "设备不支持必要的传感器")
@@ -566,69 +532,65 @@ class LocationRepository(
             private val rotationMatrix = FloatArray(9)
             private var hasGravity = false
             private var hasGeomagnetic = false
-            private val alpha = 0.15f
+            private val alpha = 0.2f
             
             override fun onSensorChanged(event: SensorEvent) {
-                when (event.sensor.type) {
-                    Sensor.TYPE_ACCELEROMETER -> {
-                        if (hasGravity) {
-                            gravity[0] = alpha * event.values[0] + (1 - alpha) * gravity[0]
-                            gravity[1] = alpha * event.values[1] + (1 - alpha) * gravity[1]
-                            gravity[2] = alpha * event.values[2] + (1 - alpha) * gravity[2]
-                        } else {
-                            gravity[0] = event.values[0]
-                            gravity[1] = event.values[1]
-                            gravity[2] = event.values[2]
-                            hasGravity = true
+                try {
+                    when (event.sensor.type) {
+                        Sensor.TYPE_ACCELEROMETER -> {
+                            if (hasGravity) {
+                                gravity[0] = alpha * event.values[0] + (1 - alpha) * gravity[0]
+                                gravity[1] = alpha * event.values[1] + (1 - alpha) * gravity[1]
+                                gravity[2] = alpha * event.values[2] + (1 - alpha) * gravity[2]
+                            } else {
+                                gravity[0] = event.values[0]
+                                gravity[1] = event.values[1]
+                                gravity[2] = event.values[2]
+                                hasGravity = true
+                            }
+                        }
+                        Sensor.TYPE_MAGNETIC_FIELD -> {
+                            if (hasGeomagnetic) {
+                                geomagnetic[0] = alpha * event.values[0] + (1 - alpha) * geomagnetic[0]
+                                geomagnetic[1] = alpha * event.values[1] + (1 - alpha) * geomagnetic[1]
+                                geomagnetic[2] = alpha * event.values[2] + (1 - alpha) * geomagnetic[2]
+                            } else {
+                                geomagnetic[0] = event.values[0]
+                                geomagnetic[1] = event.values[1]
+                                geomagnetic[2] = event.values[2]
+                                hasGeomagnetic = true
+                            }
                         }
                     }
-                    Sensor.TYPE_MAGNETIC_FIELD -> {
-                        if (hasGeomagnetic) {
-                            geomagnetic[0] = alpha * event.values[0] + (1 - alpha) * geomagnetic[0]
-                            geomagnetic[1] = alpha * event.values[1] + (1 - alpha) * geomagnetic[1]
-                            geomagnetic[2] = alpha * event.values[2] + (1 - alpha) * geomagnetic[2]
-                        } else {
-                            geomagnetic[0] = event.values[0]
-                            geomagnetic[1] = event.values[1]
-                            geomagnetic[2] = event.values[2]
-                            hasGeomagnetic = true
-                        }
-                    }
-                }
-                
-                if (hasGravity && hasGeomagnetic) {
-                    if (SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)) {
-                        SensorManager.getOrientation(rotationMatrix, orientation)
-                        
-                        val normalX = rotationMatrix[6].toDouble()
-                        val normalY = rotationMatrix[7].toDouble()
-                        val normalZ = rotationMatrix[8].toDouble()
-                        
-                        val dipRad = asin(abs(normalZ))
-                        val dip = Math.toDegrees(dipRad).toFloat()
-                        
-                        var dipDirection = Math.toDegrees(atan2(normalY, normalX)).toFloat()
-                        dipDirection = (dipDirection + 360) % 360
-                        
-                        val gx = gravity[0].toDouble()
-                        val gy = gravity[1].toDouble()
-                        val gz = gravity[2].toDouble()
-                        val gravMag = sqrt(gx * gx + gy * gy + gz * gz)
-                        
-                        if (gravMag > 0) {
-                            val dipFromGravity = Math.toDegrees(acos(abs(gz) / gravMag)).toFloat()
-                            val gravityDipDir = Math.toDegrees(atan2(gy, gx)).toFloat()
-                            var gravityDipDirNormalized = (gravityDipDir + 360) % 360
+                    
+                    if (hasGravity && hasGeomagnetic) {
+                        if (SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)) {
+                            SensorManager.getOrientation(rotationMatrix, orientation)
                             
-                            val finalDip = dip * 0.7f + dipFromGravity * 0.3f
-                            val finalDipDir = dipDirection * 0.7f + gravityDipDirNormalized * 0.3f
-                            val finalStrike = (finalDipDir + 90) % 360
+                            // 获取方位角
+                            val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+                            val pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
+                            val roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
                             
-                            sensorHistory.add(Triple(finalStrike, finalDip, finalDipDir))
+                            // 计算倾角
+                            val pitchRad = Math.toRadians(pitch.toDouble())
+                            val rollRad = Math.toRadians(roll.toDouble())
+                            val dipRad = atan(sqrt(tan(pitchRad).pow(2) + tan(rollRad).pow(2)))
+                            val dip = Math.toDegrees(dipRad).toFloat().coerceIn(0f, 90f)
+                            
+                            // 计算倾向
+                            var dipDirection = (azimuth + 360) % 360
+                            
+                            // 计算走向
+                            var strike = (dipDirection + 90) % 360
+                            
+                            // 添加到历史
+                            sensorHistory.add(Triple(strike, dip, dipDirection))
                             if (sensorHistory.size > MAX_HISTORY_SIZE) {
                                 sensorHistory.removeAt(0)
                             }
                             
+                            // 平滑
                             val (smoothedStrike, smoothedDip, smoothedDipDir) = smoothSensorData()
                             
                             val currentLoc = _currentLocation.value
@@ -643,6 +605,8 @@ class LocationRepository(
                             )
                         }
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "传感器处理异常: ${e.message}")
                 }
             }
             
@@ -652,13 +616,10 @@ class LocationRepository(
         }
         
         sensorListener?.let {
-            sensorManager.registerListener(it, accelerometer, SensorManager.SENSOR_DELAY_FASTEST)
-            sensorManager.registerListener(it, magnetometer, SensorManager.SENSOR_DELAY_FASTEST)
-            if (gyroscope != null) {
-                sensorManager.registerListener(it, gyroscope, SensorManager.SENSOR_DELAY_FASTEST)
-            }
+            sensorManager.registerListener(it, accelerometer, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(it, magnetometer, SensorManager.SENSOR_DELAY_UI)
         }
-        Log.d(TAG, "✅ 精确产状测量已启动")
+        Log.d(TAG, "✅ 产状测量已启动")
     }
 
     private fun smoothSensorData(): Triple<Float, Float, Float> {
@@ -669,28 +630,18 @@ class LocationRepository(
         var sumStrike = 0f
         var sumDip = 0f
         var sumDipDir = 0f
-        var totalWeight = 0f
         
-        sensorHistory.forEachIndexed { index, data ->
-            val weight = (index + 1).toFloat().pow(1.5f) / sensorHistory.size
-            sumStrike += data.first * weight
-            sumDip += data.second * weight
-            sumDipDir += data.third * weight
-            totalWeight += weight
+        sensorHistory.forEach { data ->
+            sumStrike += data.first
+            sumDip += data.second
+            sumDipDir += data.third
         }
         
-        if (totalWeight > 0) {
-            return Triple(
-                (sumStrike / totalWeight + 360) % 360,
-                sumDip / totalWeight,
-                (sumDipDir / totalWeight + 360) % 360
-            )
-        }
-        
+        val size = sensorHistory.size
         return Triple(
-            sensorHistory.last().first,
-            sensorHistory.last().second,
-            sensorHistory.last().third
+            (sumStrike / size + 360) % 360,
+            sumDip / size,
+            (sumDipDir / size + 360) % 360
         )
     }
 
@@ -715,7 +666,7 @@ class LocationRepository(
                 val saved = attitude.copy(note = note)
                 val history = _attitudeHistory.value.toMutableList()
                 history.add(saved)
-                if (history.size > 1000) {
+                if (history.size > 500) {
                     history.removeAt(0)
                 }
                 _attitudeHistory.value = history

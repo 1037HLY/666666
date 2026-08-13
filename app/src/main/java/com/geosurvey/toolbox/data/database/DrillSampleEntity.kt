@@ -3,9 +3,6 @@ package com.geosurvey.toolbox.data.database
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/**
- * 钻孔样本实体
- */
 @Entity(tableName = "drill_samples")
 data class DrillSampleEntity(
     @PrimaryKey(autoGenerate = true)

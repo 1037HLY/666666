@@ -6,9 +6,6 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-/**
- * 应用数据库
- */
 @Database(
     entities = [
         LocationEntity::class,

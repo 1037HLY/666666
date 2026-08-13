@@ -1505,7 +1505,7 @@ fun AnalysisScreen(
     }
 }
 
-// --- 14. 产状测量全屏内容（稳定版） ---
+// --- 14. 产状测量全屏内容（修复走向 + 美化指南针） ---
 @Composable
 fun AttitudeFullscreenContent(
     viewModel: LocationViewModel,
@@ -1573,27 +1573,11 @@ fun AttitudeFullscreenContent(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // 简化版指南针
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .background(Color(0xFF1A2332), RoundedCornerShape(40))
-                            .padding(8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                "🧭",
-                                fontSize = 32.sp
-                            )
-                            Text(
-                                "${String.format("%.0f", currentAttitude.dipDirection)}°",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
+                    // 美化版指南针
+                    AttitudeCompass(
+                        dipDirection = currentAttitude.dipDirection,
+                        dip = currentAttitude.dip
+                    )
                     
                     if (currentLocation != null) {
                         Text(
@@ -1680,7 +1664,7 @@ fun AttitudeFullscreenContent(
                         ) {
                             Column {
                                 Text(
-                                    "倾向:${String.format("%.0f", attitude.dipDirection)}° 倾角:${String.format("%.0f", attitude.dip)}°",
+                                    "倾向:${String.format("%.0f", attitude.dipDirection)}° 倾角:${String.format("%.0f", attitude.dip)}° 走向:${String.format("%.0f", attitude.strike)}°",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -1789,7 +1773,204 @@ private fun shareCSV(context: Context, csvData: String, fileName: String) {
     }
 }
 
-// --- 15. 赤平投影和玫瑰花图全屏内容 ---
+// --- 15. 美化版指南针（参考智能地质罗盘） ---
+@Composable
+fun AttitudeCompass(dipDirection: Float, dip: Float) {
+    Box(
+        modifier = Modifier
+            .size(140.dp)
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF1A2332),
+                        Color(0xFF0D1117)
+                    ),
+                    radius = 1f
+                ),
+                shape = RoundedCornerShape(70)
+            )
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(70),
+                ambientColor = Color(0xFF0EA5E9).copy(alpha = 0.2f)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(
+            modifier = Modifier
+                .size(130.dp)
+        ) {
+            val centerX = size.width / 2f
+            val centerY = size.height / 2f
+            val radius = size.width / 2f - 4f
+            
+            // 外圈发光
+            drawCircle(
+                color = Color(0xFF0EA5E9).copy(alpha = 0.1f),
+                radius = radius + 4f,
+                center = Offset(centerX, centerY)
+            )
+            
+            // 外圈
+            drawCircle(
+                color = Color(0xFF3B82F6).copy(alpha = 0.3f),
+                radius = radius,
+                center = Offset(centerX, centerY),
+                style = Stroke(width = 2f)
+            )
+            
+            // 内圈
+            drawCircle(
+                color = Color(0xFF64748B).copy(alpha = 0.2f),
+                radius = radius * 0.75f,
+                center = Offset(centerX, centerY),
+                style = Stroke(width = 1f)
+            )
+            
+            // 十字线
+            for (i in 0..3) {
+                val angle = i * PI / 2
+                val endX = centerX + radius * 0.75f * cos(angle).toFloat()
+                val endY = centerY + radius * 0.75f * sin(angle).toFloat()
+                drawLine(
+                    color = Color(0xFF64748B).copy(alpha = 0.15f),
+                    start = Offset(centerX, centerY),
+                    end = Offset(endX, endY),
+                    strokeWidth = 1f
+                )
+            }
+            
+            // 方向标签 (N, E, S, W)
+            val directions = listOf("N", "E", "S", "W")
+            for (i in 0..3) {
+                val angle = i * PI / 2 - PI / 2
+                val textRadius = radius - 8f
+                val x = centerX + textRadius * cos(angle).toFloat()
+                val y = centerY + textRadius * sin(angle).toFloat()
+                drawContext.canvas.nativeCanvas.apply {
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.parseColor(
+                            when (i) {
+                                0 -> "#4CAF50"      // N 绿色
+                                1 -> "#64748B"      // E 灰色
+                                2 -> "#EF4444"      // S 红色
+                                else -> "#64748B"   // W 灰色
+                            }
+                        )
+                        textSize = if (i == 0) 16f else 12f
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        typeface = if (i == 0) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+                    }
+                    drawText(directions[i], x, y + 4, paint)
+                }
+            }
+            
+            // 刻度线
+            for (i in 0..35) {
+                val angle = i * PI / 18 - PI / 2
+                val innerRadius = if (i % 5 == 0) radius - 10f else radius - 5f
+                val outerRadius = radius - 2f
+                val startX = centerX + innerRadius * cos(angle).toFloat()
+                val startY = centerY + innerRadius * sin(angle).toFloat()
+                val endX = centerX + outerRadius * cos(angle).toFloat()
+                val endY = centerY + outerRadius * sin(angle).toFloat()
+                drawLine(
+                    color = if (i % 5 == 0) Color.White else Color(0xFF64748B).copy(alpha = 0.4f),
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = if (i % 5 == 0) 2f else 1f
+                )
+            }
+            
+            // 倾向指针            val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
+            val pointerLength = radius * 0.6f
+            val endX = centerX + pointerLength * cos(angleRad).toFloat()
+            val endY = centerY + pointerLength * sin(angleRad).toFloat()
+            
+            // 指针发光
+            drawLine(
+                color = Color(0xFFEF4444).copy(alpha = 0.2f),
+                start = Offset(centerX, centerY),
+                end = Offset(endX, endY),
+                strokeWidth = 16f
+            )
+            
+            // 指针主体
+            drawLine(
+                color = Color(0xFFEF4444),
+                start = Offset(centerX, centerY),
+                end = Offset(endX, endY),
+                strokeWidth = 4f
+            )
+            
+            // 指针头部三角
+            val headAngle = angleRad
+            val headLength = 10f
+            val headX = endX - headLength * cos(headAngle).toFloat()
+            val headY = endY - headLength * sin(headAngle).toFloat()
+            
+            val path = Path()
+            path.moveTo(endX, endY)
+            path.lineTo(headX - 5 * sin(headAngle).toFloat(), headY + 5 * cos(headAngle).toFloat())
+            path.lineTo(headX + 5 * sin(headAngle).toFloat(), headY - 5 * cos(headAngle).toFloat())
+            path.close()
+            
+            drawPath(
+                path = path,
+                color = Color(0xFFEF4444)
+            )
+            
+            // 中心装饰圆
+            drawCircle(
+                color = Color(0xFF0EA5E9),
+                radius = 8f,
+                center = Offset(centerX, centerY)
+            )
+            drawCircle(
+                color = Color(0xFFFFFFFF),
+                radius = 3f,
+                center = Offset(centerX, centerY)
+            )
+            
+            // 外圈刻度数字 (每30度)
+            for (i in 0..11) {
+                val angle = i * PI / 6 - PI / 2
+                val numRadius = radius + 12f
+                val x = centerX + numRadius * cos(angle).toFloat()
+                val y = centerY + numRadius * sin(angle).toFloat()
+                val value = (i * 30)
+                drawContext.canvas.nativeCanvas.apply {
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.parseColor("#94A3B8")
+                        textSize = 10f
+                        textAlign = android.graphics.Paint.Align.CENTER
+                    }
+                    drawText("$value", x, y + 4, paint)
+                }
+            }
+        }
+        
+        // 倾向数值显示
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "${String.format("%.0f", dipDirection)}°",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFFFFFF)
+            )
+            Text(
+                "倾向 ${String.format("%.0f", dip)}°",
+                fontSize = 11.sp,
+                color = Color(0xFF94A3B8)
+            )
+        }
+    }
+}
+
+// --- 16. 赤平投影和玫瑰花图全屏内容 ---
 @Composable
 fun ProjectionFullscreenContent(
     viewModel: LocationViewModel,
@@ -1900,18 +2081,18 @@ fun ProjectionFullscreenContent(
                                 )
                                 Column {
                                     Text(
-                                        "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}°",
+                                        "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}° 走向:${String.format("%.0f", attitude.strike)}°",
                                         fontSize = 12.sp
                                     )
                                     Text(
-                                        "走向:${String.format("%.0f", attitude.strike)}°",
+                                        "${android.text.format.DateFormat.format("HH:mm", attitude.time)}",
                                         fontSize = 10.sp,
-                                        color = Color(0xFF64748B)
+                                        color = Color(0xFF94A3B8)
                                     )
                                 }
                             }
                             Text(
-                                "${android.text.format.DateFormat.format("HH:mm", attitude.time)}",
+                                "📍 ${String.format("%.4f", attitude.latitude)}",
                                 fontSize = 10.sp,
                                 color = Color(0xFF94A3B8)
                             )
@@ -1985,7 +2166,7 @@ fun ProjectionFullscreenContent(
     }
 }
 
-// --- 16. 赤平投影图 ---
+// --- 17. 赤平投影图 ---
 @Composable
 fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
     Card(
@@ -2112,7 +2293,7 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
     }
 }
 
-// --- 17. 玫瑰花图 ---
+// --- 18. 玫瑰花图 ---
 @Composable
 fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
     Card(
@@ -2134,7 +2315,6 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
             if (attitudeHistory.isNotEmpty()) {
                 attitudeHistory.forEach { attitude ->
                     var strike = attitude.strike
-                    if (strike > 180) strike -= 180
                     val binIndex = (strike / binSize).toInt().coerceIn(0, bins - 1)
                     counts[binIndex]++
                 }
@@ -2254,7 +2434,7 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
     }
 }
 
-// --- 18. RecordScreen ---
+// --- 19. RecordScreen ---
 @Composable
 fun RecordScreen(
     state: RecordScreenState,
@@ -2302,7 +2482,7 @@ fun RecordScreen(
     }
 }
 
-// --- 19. CameraScreen ---
+// --- 20. CameraScreen ---
 @Composable
 fun CameraScreen(
     state: CameraScreenState,
@@ -2352,7 +2532,7 @@ fun CameraScreen(
     }
 }
 
-// --- 20. 预览 ---
+// --- 21. 预览 ---
 @Preview(showBackground = true)
 @Composable
 fun PreviewMainScreen() {

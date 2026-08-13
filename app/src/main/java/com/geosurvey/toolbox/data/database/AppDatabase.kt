@@ -10,7 +10,12 @@ import androidx.room.TypeConverters
  * 应用数据库
  */
 @Database(
-    entities = [LocationEntity::class, TrackEntity::class],
+    entities = [
+        LocationEntity::class,
+        TrackEntity::class,
+        SampleEntity::class,
+        DrillSampleEntity::class
+    ],
     version = 1,
     exportSchema = false
 )

@@ -174,6 +174,56 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // ============ 导出样本数据 ============
+    suspend fun exportSamples(): String {
+        val list = samples.value
+        if (list.isEmpty()) return ""
+        
+        return buildString {
+            append("序号,样本编号,类型,纬度,经度,海拔(m),重量(kg),描述,时间,备注\n")
+            list.forEachIndexed { index, data ->
+                append("${index + 1},")
+                append("${data.sampleId},")
+                append("${data.type},")
+                append("${String.format("%.6f", data.latitude)},")
+                append("${String.format("%.6f", data.longitude)},")
+                append("${String.format("%.1f", data.altitude)},")
+                append("${String.format("%.2f", data.weight)},")
+                append("${data.description},")
+                append("${android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", data.time)},")
+                append("${data.note}\n")
+            }
+        }
+    }
+
+    suspend fun exportDrillSamples(): String {
+        val list = drillSamples.value
+        if (list.isEmpty()) return ""
+        
+        return buildString {
+            append("序号,钻孔编号,样本编号,深度从(m),深度到(m),岩心长(m),采取率(%),样长(m),重量(kg),岩心直径(mm),纬度,经度,海拔(m),岩性,描述,时间,备注\n")
+            list.forEachIndexed { index, data ->
+                append("${index + 1},")
+                append("${data.holeId},")
+                append("${data.sampleId},")
+                append("${String.format("%.2f", data.depthFrom)},")
+                append("${String.format("%.2f", data.depthTo)},")
+                append("${String.format("%.2f", data.coreLength)},")
+                append("${String.format("%.1f", data.recoveryRate)},")
+                append("${String.format("%.2f", data.sampleLength)},")
+                append("${String.format("%.2f", data.weight)},")
+                append("${String.format("%.1f", data.coreDiameter)},")
+                append("${String.format("%.6f", data.latitude)},")
+                append("${String.format("%.6f", data.longitude)},")
+                append("${String.format("%.1f", data.altitude)},")
+                append("${data.rockType},")
+                append("${data.description},")
+                append("${android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", data.time)},")
+                append("${data.note}\n")
+            }
+        }
+    }
+
     // ============ 清理 ============
     override fun onCleared() {
         super.onCleared()

@@ -56,6 +56,11 @@ android {
     }
 }
 
+kapt {
+    correctErrorTypes = true
+    useBuildCache = true
+}
+
 dependencies {
     // Core
     implementation("androidx.core:core-ktx:1.12.0")
@@ -77,10 +82,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.0.1")
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
 
-    // Room 数据库
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    // ❌ 暂时注释掉 Room 数据库
+    // implementation("androidx.room:room-runtime:2.6.1")
+    // implementation("androidx.room:room-ktx:2.6.1")
+    // kapt("androidx.room:room-compiler:2.6.1")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")

@@ -22,8 +22,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.geosurvey.toolbox.data.database.LocationDao
 import com.geosurvey.toolbox.data.database.LocationEntity
 import com.geosurvey.toolbox.data.database.TrackEntity
-import com.geosurvey.toolbox.data.database.SampleEntity
-import com.geosurvey.toolbox.data.database.DrillSampleEntity
 import com.geosurvey.toolbox.domain.model.Constellation
 import com.geosurvey.toolbox.domain.model.LocationData
 import com.geosurvey.toolbox.domain.model.LocationQuality
@@ -39,6 +37,7 @@ import kotlin.math.*
 // 数据存储扩展
 private val Context.dataStore by preferencesDataStore("settings")
 
+// --- 产状数据类 ---
 data class AttitudeData(
     val id: Long = 0,
     val strike: Float = 0f,
@@ -51,7 +50,7 @@ data class AttitudeData(
     val note: String = ""
 )
 
-// 样本数据类
+// --- 样本数据类 ---
 data class SampleData(
     val id: Long = 0,
     val sampleId: String = "",
@@ -65,7 +64,7 @@ data class SampleData(
     val note: String = ""
 )
 
-// 钻孔样本数据类
+// --- 钻孔样本数据类 ---
 data class DrillSampleData(
     val id: Long = 0,
     val holeId: String = "",

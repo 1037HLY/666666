@@ -3,9 +3,6 @@ package com.geosurvey.toolbox.data.database
 import androidx.room.TypeConverter
 import java.util.Date
 
-/**
- * Room类型转换器
- */
 class Converters {
     @TypeConverter
     fun fromTimestamp(value: Long?): Date? {

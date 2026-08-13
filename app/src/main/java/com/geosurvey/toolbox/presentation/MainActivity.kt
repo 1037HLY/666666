@@ -7,7 +7,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -146,7 +145,7 @@ class RecordScreenState {
 class CameraScreenState {
     var isPreview1Fullscreen by mutableStateOf(false)
     var isPreview2Fullscreen by mutableStateOf(false)
-    // ===== 水印开关（新增）=====
+    // 水印开关
     var showLocation by mutableStateOf(true)
     var showAttitude by mutableStateOf(true)
     var showTime by mutableStateOf(true)
@@ -182,7 +181,7 @@ fun MainScreen(
                 }
             )
         },
-        containerColor = Color.Transparent
+        containerColor = Color(0xFFF0F4F8)
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             NavHost(
@@ -246,11 +245,11 @@ fun MainScreen(
                             .shadow(
                                 elevation = 24.dp,
                                 shape = RoundedCornerShape(24.dp),
-                                ambientColor = Color.Black.copy(alpha = 0.15f)
+                                ambientColor = Color(0x26000000)
                             ),
                         shape = RoundedCornerShape(24.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = Color.White.copy(alpha = 0.98f)
+                            containerColor = Color(0xFAFFFFFF)
                         )
                     ) {
                         Box(
@@ -287,19 +286,19 @@ fun GlassBottomNavigation(
             .shadow(
                 elevation = 16.dp,
                 shape = RoundedCornerShape(32.dp),
-                ambientColor = Color.Black.copy(alpha = 0.15f),
-                spotColor = Color.Black.copy(alpha = 0.1f)
+                ambientColor = Color(0x26000000),
+                spotColor = Color(0x1A000000)
             )
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.8f),
-                        Color.White.copy(alpha = 0.6f)
+                        Color(0xCCFFFFFF),
+                        Color(0x99FFFFFF)
                     )
                 ),
                 shape = RoundedCornerShape(32.dp)
             ),
-        containerColor = Color.Transparent,
+        containerColor = Color(0x00000000),
         tonalElevation = 0.dp,
         windowInsets = WindowInsets(0, 0, 0, 0)
     ) {
@@ -325,13 +324,13 @@ fun GlassBottomNavigation(
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Color(0xFF0EA5E9),
                     selectedTextColor = Color(0xFF0EA5E9),
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray,
-                    indicatorColor = Color.Transparent
+                    unselectedIconColor = Color(0xFF808080),
+                    unselectedTextColor = Color(0xFF808080),
+                    indicatorColor = Color(0x00000000)
                 ),
                 modifier = Modifier
                     .background(
-                        if (selected) Color(0xFF0EA5E9).copy(alpha = 0.15f) else Color.Transparent,
+                        if (selected) Color(0x260EA5E9) else Color(0x00000000),
                         RoundedCornerShape(20.dp)
                     )
             )
@@ -355,14 +354,14 @@ fun SatellitePolarChart(
         val radius = min(size.width, size.height) / 2f - 20f
 
         drawCircle(
-            color = Color(0xFF64748B).copy(alpha = 0.3f),
+            color = Color(0x4D64748B),
             radius = radius,
             center = Offset(centerX, centerY),
             style = Stroke(width = 1f)
         )
 
         drawCircle(
-            color = Color(0xFF64748B).copy(alpha = 0.2f),
+            color = Color(0x3364748B),
             radius = radius * 0.5f,
             center = Offset(centerX, centerY),
             style = Stroke(width = 1f)
@@ -373,7 +372,7 @@ fun SatellitePolarChart(
             val endX = centerX + radius * cos(angle)
             val endY = centerY + radius * sin(angle)
             drawLine(
-                color = Color(0xFF64748B).copy(alpha = 0.2f),
+                color = Color(0x3364748B),
                 start = Offset(centerX, centerY),
                 end = Offset(endX, endY),
                 strokeWidth = 1f
@@ -437,7 +436,7 @@ fun SatellitePolarChart(
             center = Offset(centerX, centerY)
         )
         drawCircle(
-            color = Color(0xFF0EA5E9).copy(alpha = 0.3f),
+            color = Color(0x4D0EA5E9),
             radius = 14f,
             center = Offset(centerX, centerY)
         )
@@ -532,7 +531,7 @@ fun ElevationChart(
 
         drawPath(
             path = fillPath,
-            color = Color(0xFF0EA5E9).copy(alpha = 0.2f)
+            color = Color(0x330EA5E9)
         )
     }
 }
@@ -552,12 +551,12 @@ fun SmallWindowCard(
             .shadow(
                 elevation = 6.dp,
                 shape = RoundedCornerShape(20.dp),
-                ambientColor = Color.Black.copy(alpha = 0.12f),
-                spotColor = Color.Black.copy(alpha = 0.08f)
+                ambientColor = Color(0x1F000000),
+                spotColor = Color(0x14000000)
             ),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.85f)
+            containerColor = Color(0xD9FFFFFF)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -578,9 +577,9 @@ fun SmallWindowCard(
                     .background(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0f),
-                                Color.White.copy(alpha = 0.9f),
-                                Color.White.copy(alpha = 0f)
+                                Color(0x00FFFFFF),
+                                Color(0xE6FFFFFF),
+                                Color(0x00FFFFFF)
                             )
                         )
                     )
@@ -727,7 +726,7 @@ fun HomeScreen(
                         color = Color(0xFF0EA5E9),
                         strokeWidth = 2.dp
                     )
-                    Text("搜索GPS信号...", fontSize = 13.sp, color = Color.Gray)
+                    Text("搜索GPS信号...", fontSize = 13.sp, color = Color(0xFF808080))
                 }
             }
         }
@@ -850,7 +849,7 @@ fun GPSFullscreenContent(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxSize()
             ) {
-                Text("⚠️ 缺少定位权限", fontSize = 20.sp, color = Color.Red)
+                Text("⚠️ 缺少定位权限", fontSize = 20.sp, color = Color(0xFFFF0000))
                 Button(onClick = { permissionState.launchPermissionRequest() }) {
                     Text("授予权限")
                 }
@@ -861,8 +860,8 @@ fun GPSFullscreenContent(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxSize()
             ) {
-                Text("⚠️ 定位服务未开启", fontSize = 20.sp, color = Color.Red)
-                Text("请打开GPS或网络定位", fontSize = 16.sp, color = Color.Gray)
+                Text("⚠️ 定位服务未开启", fontSize = 20.sp, color = Color(0xFFFF0000))
+                Text("请打开GPS或网络定位", fontSize = 16.sp, color = Color(0xFF808080))
                 Button(onClick = { viewModel.restartLocation() }) {
                     Text("重新尝试定位")
                 }
@@ -1002,8 +1001,8 @@ fun GPSFullscreenContent(
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(48.dp), color = Color(0xFF0EA5E9))
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("正在搜索GPS信号...", fontSize = 18.sp, color = Color.Gray)
-                Text("请在室外开阔地带等待", fontSize = 14.sp, color = Color.Gray)
+                Text("正在搜索GPS信号...", fontSize = 18.sp, color = Color(0xFF808080))
+                Text("请在室外开阔地带等待", fontSize = 14.sp, color = Color(0xFF808080))
                 Button(onClick = { viewModel.restartLocation() }) {
                     Text("重新尝试定位")
                 }
@@ -1037,11 +1036,11 @@ fun SatelliteFullscreenContent(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(12.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .background(Color(0x99000000), RoundedCornerShape(8.dp))
                         .padding(8.dp)
                 ) {
                     Column {
-                        Text("可见: ${satellites.size}颗", fontSize = 16.sp, color = Color.White)
+                        Text("可见: ${satellites.size}颗", fontSize = 16.sp, color = Color(0xFFFFFFFF))
                         Text("锁定: ${satellites.count { it.usedInFix }}颗", fontSize = 16.sp, color = Color(0xFF4CAF50))
                     }
                 }
@@ -1049,7 +1048,7 @@ fun SatelliteFullscreenContent(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(12.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .background(Color(0x99000000), RoundedCornerShape(8.dp))
                         .padding(8.dp)
                 ) {
                     Column {
@@ -1062,7 +1061,7 @@ fun SatelliteFullscreenContent(
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("📡", fontSize = 64.sp)
-                    Text("等待卫星信号...", fontSize = 16.sp, color = Color.Gray)
+                    Text("等待卫星信号...", fontSize = 16.sp, color = Color(0xFF808080))
                 }
             }
         }
@@ -1086,7 +1085,7 @@ fun SatelliteFullscreenContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (satellite.usedInFix) Color(0xFFE8F5E9) else Color.Transparent,
+                                    if (satellite.usedInFix) Color(0xFFE8F5E9) else Color(0x00000000),
                                     RoundedCornerShape(4.dp)
                                 )
                                 .padding(6.dp),
@@ -1125,7 +1124,7 @@ fun SatelliteFullscreenContent(
                 Text(
                     "等待卫星信号...",
                     fontSize = 16.sp,
-                    color = Color.Gray,
+                    color = Color(0xFF808080),
                     modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center)
                 )
             }
@@ -1291,7 +1290,7 @@ fun TrackFullscreenContent(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         Text("📭", fontSize = 48.sp)
-                        Text("暂无轨迹数据", fontSize = 16.sp, color = Color.Gray)
+                        Text("暂无轨迹数据", fontSize = 16.sp, color = Color(0xFF808080))
                         Text("点击「开始记录」开始收集轨迹", fontSize = 13.sp, color = Color(0xFF94A3B8))
                     }
                 }
@@ -1319,7 +1318,7 @@ fun TrackFullscreenContent(
                 if (tracks.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.7f)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xB3FFFFFF)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Column(
@@ -1720,8 +1719,8 @@ fun AttitudeFullscreenContent(
                 } else {
                     CircularProgressIndicator(modifier = Modifier.size(32.dp), color = Color(0xFF0EA5E9))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("正在测量...", fontSize = 14.sp, color = Color.Gray)
-                    Text("请将手机背面贴合岩面", fontSize = 12.sp, color = Color.Gray)
+                    Text("正在测量...", fontSize = 14.sp, color = Color(0xFF808080))
+                    Text("请将手机背面贴合岩面", fontSize = 12.sp, color = Color(0xFF808080))
                 }
             }
         }
@@ -1781,7 +1780,7 @@ fun AttitudeFullscreenContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (attitude.note.isNotEmpty()) Color(0xFFE8F5E9) else Color.Transparent,
+                                    if (attitude.note.isNotEmpty()) Color(0xFFE8F5E9) else Color(0x00000000),
                                     RoundedCornerShape(4.dp)
                                 )
                                 .padding(6.dp),
@@ -1918,7 +1917,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
             .shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(60),
-                ambientColor = Color(0xFF0EA5E9).copy(alpha = 0.2f)
+                ambientColor = Color(0x330EA5E9)
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -1931,20 +1930,20 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
             val radius = size.width / 2f - 4f
             
             drawCircle(
-                color = Color(0xFF0EA5E9).copy(alpha = 0.1f),
+                color = Color(0x1A0EA5E9),
                 radius = radius + 4f,
                 center = Offset(centerX, centerY)
             )
             
             drawCircle(
-                color = Color(0xFF3B82F6).copy(alpha = 0.3f),
+                color = Color(0x4D3B82F6),
                 radius = radius,
                 center = Offset(centerX, centerY),
                 style = Stroke(width = 2f)
             )
             
             drawCircle(
-                color = Color(0xFF64748B).copy(alpha = 0.2f),
+                color = Color(0x3364748B),
                 radius = radius * 0.7f,
                 center = Offset(centerX, centerY),
                 style = Stroke(width = 1f)
@@ -1955,7 +1954,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                 val endX = centerX + radius * 0.7f * cos(angle).toFloat()
                 val endY = centerY + radius * 0.7f * sin(angle).toFloat()
                 drawLine(
-                    color = Color(0xFF64748B).copy(alpha = 0.15f),
+                    color = Color(0x2664748B),
                     start = Offset(centerX, centerY),
                     end = Offset(endX, endY),
                     strokeWidth = 1f
@@ -1995,7 +1994,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                 val endX = centerX + outerRadius * cos(angle).toFloat()
                 val endY = centerY + outerRadius * sin(angle).toFloat()
                 drawLine(
-                    color = if (i % 3 == 0) Color.White else Color(0xFF64748B).copy(alpha = 0.4f),
+                    color = if (i % 3 == 0) Color(0xFFFFFFFF) else Color(0x6664748B),
                     start = Offset(startX, startY),
                     end = Offset(endX, endY),
                     strokeWidth = if (i % 3 == 0) 2f else 1f
@@ -2008,7 +2007,7 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
             val endY = centerY + pointerLength * sin(angleRad).toFloat()
             
             drawLine(
-                color = Color(0xFFEF4444).copy(alpha = 0.2f),
+                color = Color(0x33EF4444),
                 start = Offset(centerX, centerY),
                 end = Offset(endX, endY),
                 strokeWidth = 14f
@@ -2352,7 +2351,7 @@ fun ProjectionFullscreenContent(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (selectedTab == index) Color(0xFF0EA5E9) else Color(0xFFE2E8F0),
-                        contentColor = if (selectedTab == index) Color.White else Color(0xFF64748B)
+                        contentColor = if (selectedTab == index) Color(0xFFFFFFFF) else Color(0xFF64748B)
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -2376,7 +2375,7 @@ fun ProjectionFullscreenContent(
                 ) {
                     Text("📭", fontSize = 48.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("暂无产状数据", fontSize = 16.sp, color = Color.Gray)
+                    Text("暂无产状数据", fontSize = 16.sp, color = Color(0xFF808080))
                     Text("请先记录产状数据", fontSize = 13.sp, color = Color(0xFF94A3B8))
                 }
             }
@@ -2406,7 +2405,7 @@ fun ProjectionFullscreenContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    if (isSelected) Color(0xFFE8F5E9) else Color.Transparent,
+                                    if (isSelected) Color(0xFFE8F5E9) else Color(0x00000000),
                                     RoundedCornerShape(4.dp)
                                 )
                                 .padding(6.dp)
@@ -2886,7 +2885,7 @@ fun SampleFullscreenContent(
                     Text("经度: ${String.format("%.6f", currentLocation!!.longitude)}°", fontSize = 13.sp)
                     Text("海拔: ${String.format("%.1f", currentLocation!!.altitude)}m", fontSize = 13.sp)
                 } else {
-                    Text("等待GPS定位...", fontSize = 13.sp, color = Color.Gray)
+                    Text("等待GPS定位...", fontSize = 13.sp, color = Color(0xFF808080))
                 }
             }
         }
@@ -3137,7 +3136,7 @@ fun DrillSampleFullscreenContent(
                     Text("经度: ${String.format("%.6f", currentLocation!!.longitude)}°", fontSize = 13.sp)
                     Text("海拔: ${String.format("%.1f", currentLocation!!.altitude)}m", fontSize = 13.sp)
                 } else {
-                    Text("等待GPS定位...", fontSize = 13.sp, color = Color.Gray)
+                    Text("等待GPS定位...", fontSize = 13.sp, color = Color(0xFF808080))
                 }
             }
         }
@@ -3729,7 +3728,7 @@ fun WatermarkCameraFullscreenContent(
                         Text(locationName, fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                 } else {
-                    Text("等待GPS定位...", fontSize = 12.sp, color = Color.Gray)
+                    Text("等待GPS定位...", fontSize = 12.sp, color = Color(0xFF808080))
                 }
                 if (currentAttitude != null) {
                     Text("倾向: ${String.format("%.0f", currentAttitude!!.dipDirection)}° 倾角: ${String.format("%.0f", currentAttitude!!.dip)}°", fontSize = 12.sp)
@@ -3742,7 +3741,7 @@ fun WatermarkCameraFullscreenContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Black),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF000000)),
             shape = RoundedCornerShape(12.dp)
         ) {
             if (cameraPermissionState.status.isGranted) {
@@ -3837,12 +3836,12 @@ fun WatermarkCameraFullscreenContent(
                                     .padding(bottom = 24.dp)
                                     .size(72.dp)
                                     .background(
-                                        Color.White.copy(alpha = 0.9f),
+                                        Color(0xE6FFFFFF),
                                         RoundedCornerShape(36.dp)
                                     )
                                     .border(
                                         width = 4.dp,
-                                        color = Color.White,
+                                        color = Color(0xFFFFFFFF),
                                         shape = RoundedCornerShape(36.dp)
                                     ),
                                 contentAlignment = Alignment.Center
@@ -3869,7 +3868,7 @@ fun WatermarkCameraFullscreenContent(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.7f))
+                                .background(Color(0xB3000000))
                         ) {
                             Image(
                                 bitmap = capturedBitmap!!.asImageBitmap(),
@@ -3921,7 +3920,7 @@ fun WatermarkCameraFullscreenContent(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("📷", fontSize = 48.sp)
-                        Text("需要相机权限", fontSize = 16.sp, color = Color.White)
+                        Text("需要相机权限", fontSize = 16.sp, color = Color(0xFFFFFFFF))
                         Button(
                             onClick = { cameraPermissionState.launchPermissionRequest() },
                             colors = ButtonDefaults.buttonColors(
@@ -3988,7 +3987,7 @@ fun GalleryFullscreenContent(
                 ) {
                     Text("📭", fontSize = 48.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("暂无照片", fontSize = 16.sp, color = Color.Gray)
+                    Text("暂无照片", fontSize = 16.sp, color = Color(0xFF808080))
                     Text("使用水印相机拍照", fontSize = 13.sp, color = Color(0xFF94A3B8))
                 }
             }
@@ -4052,7 +4051,7 @@ fun GalleryFullscreenContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.8f))
+                        .background(Color(0xCC000000))
                         .clickable { showDetail = false }
                 ) {
                     Box(

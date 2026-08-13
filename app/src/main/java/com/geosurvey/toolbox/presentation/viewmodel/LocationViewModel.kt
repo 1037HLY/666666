@@ -24,11 +24,10 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     private val database = AppDatabase.getDatabase(application)
     private val locationRepository = LocationRepository(application, database.locationDao())
 
-    // ===== UI状态 =====
     private val _uiState = MutableStateFlow(LocationUiState())
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
 
-    // ===== 定位数据 =====
+    // 定位数据
     val currentLocation: StateFlow<LocationData?> = locationRepository.currentLocation
     val satellites: StateFlow<List<SatelliteInfo>> = locationRepository.satellites
     val isTracking: StateFlow<Boolean> = locationRepository.isTracking
@@ -36,13 +35,13 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     val locationName = locationRepository.locationName
     val detailedAddress = locationRepository.detailedAddress
 
-    // ===== 导航数据 =====
+    // 导航数据
     val isNavigating: StateFlow<Boolean> = locationRepository.isNavigating
     val navigationTarget: StateFlow<TrackEntity?> = locationRepository.navigationTarget
     val navigationDistance: StateFlow<Double> = locationRepository.navigationDistance
     val navigationBearing: StateFlow<Double> = locationRepository.navigationBearing
 
-    // ===== 产状数据 =====
+    // 产状数据
     val currentAttitude: StateFlow<AttitudeData?> = locationRepository.currentAttitude
     val attitudeHistory: StateFlow<List<AttitudeData>> = locationRepository.attitudeHistory
 
@@ -52,7 +51,6 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         startAttitudeMeasurement()
     }
 
-    // ============ 定位控制 ============
     fun startLocation() {
         Log.d(TAG, "开始定位")
         locationRepository.startLocationUpdates()
@@ -69,7 +67,6 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ============ 轨迹控制 ============
     fun startTracking() {
         locationRepository.startTracking()
         _uiState.value = _uiState.value.copy(isRecording = true)
@@ -87,12 +84,10 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ============ 导航控制 ============
     fun setNavigationTarget(track: TrackEntity?) {
         locationRepository.setNavigationTarget(track)
     }
 
-    // ============ 产状控制 ============
     fun startAttitudeMeasurement() {
         locationRepository.startAttitudeMeasurement()
     }
@@ -113,7 +108,6 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ============ 导出产状数据 ============
     suspend fun exportAttitudeHistory(): String {
         val history = attitudeHistory.value
         if (history.isEmpty()) return ""
@@ -134,7 +128,6 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ============ 清理 ============
     override fun onCleared() {
         super.onCleared()
         locationRepository.cleanup()

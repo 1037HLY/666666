@@ -2,6 +2,7 @@ package com.geosurvey.toolbox.presentation
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.location.LocationManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -50,7 +52,10 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.launch
 import kotlin.math.*
+import java.io.File
+import java.io.FileOutputStream
 
 // --- 1. 定义导航路由 ---
 sealed class Screen(val route: String) {
@@ -174,7 +179,7 @@ fun MainScreen(
         }
     }
 
-    // 全屏对话框
+    // 全屏对话框 - 点击外部关闭
     fullscreenContent?.let { content ->
         Dialog(
             onDismissRequest = { fullscreenContent = null },
@@ -214,15 +219,6 @@ fun MainScreen(
                                 .fillMaxSize()
                                 .padding(20.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 8.dp)
-                                    .background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                            ) {
-                                Text("点击外部关闭", fontSize = 12.sp, color = Color(0xFF94A3B8))
-                            }
                             content()
                         }
                     }
@@ -1517,8 +1513,10 @@ fun AttitudeFullscreenContent(
     attitudeHistory: List<AttitudeData>,
     currentLocation: com.geosurvey.toolbox.domain.model.LocationData?
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var noteText by remember { mutableStateOf("") }
-    var showHistory by remember { mutableStateOf(false) }
+    var exportFileName by remember { mutableStateOf("产状记录") }
 
     Column(
         modifier = Modifier
@@ -1529,6 +1527,7 @@ fun AttitudeFullscreenContent(
         Text("📐 产状测量", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
         Text("将手机背面贴合岩层面", fontSize = 14.sp, color = Color(0xFF64748B))
 
+        // 当前测量值
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
@@ -1574,6 +1573,7 @@ fun AttitudeFullscreenContent(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
+                    // 美化后的指南针
                     AttitudeCompass(dipDirection = currentAttitude.dipDirection)
                     
                     if (currentLocation != null) {
@@ -1597,6 +1597,7 @@ fun AttitudeFullscreenContent(
             }
         }
 
+        // 备注输入和记录按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1626,41 +1627,43 @@ fun AttitudeFullscreenContent(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                "📋 历史记录 (${attitudeHistory.size}组)",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1E293B)
-            )
-            TextButton(onClick = { showHistory = !showHistory }) {
-                Text(if (showHistory) "收起" else "展开", fontSize = 12.sp)
-            }
-        }
+        // 历史记录 - 直接展示，可滑动，长按可编辑（长按功能暂用点击代替）
+        Text(
+            "📋 历史记录 (${attitudeHistory.size}组)",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF1E293B),
+            modifier = Modifier.padding(top = 8.dp)
+        )
 
-        if (showHistory && attitudeHistory.isNotEmpty()) {
+        if (attitudeHistory.isNotEmpty()) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 200.dp)
+                        .padding(4.dp)
                 ) {
                     items(attitudeHistory.reversed()) { attitude ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(8.dp)
                                 .background(
                                     if (attitude.note.isNotEmpty()) Color(0xFFE8F5E9) else Color.Transparent,
                                     RoundedCornerShape(4.dp)
-                                ),
+                                )
+                                .padding(8.dp)
+                                .clickable {
+                                    // 长按编辑功能简化：点击可复制备注到输入框
+                                    if (attitude.note.isNotEmpty()) {
+                                        noteText = attitude.note
+                                    }
+                                },
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
@@ -1692,6 +1695,43 @@ fun AttitudeFullscreenContent(
                     }
                 }
             }
+        } else {
+            Text("暂无记录", fontSize = 13.sp, color = Color(0xFF94A3B8))
+        }
+
+        // 导出CSV按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = exportFileName,
+                onValueChange = { exportFileName = it },
+                label = { Text("文件名") },
+                modifier = Modifier.weight(2f),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF0EA5E9)
+                )
+            )
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        val csvData = viewModel.exportAttitudeHistory()
+                        if (csvData.isNotEmpty()) {
+                            val fileName = if (exportFileName.isNotBlank()) exportFileName else "产状记录"
+                            shareCSV(context, csvData, fileName)
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = attitudeHistory.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF10B981)
+                )
+            ) {
+                Text("📤 导出CSV", fontSize = 14.sp)
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -1704,25 +1744,81 @@ fun AttitudeFullscreenContent(
     }
 }
 
-// --- 15. 产状指南针 ---
+// --- 导出CSV并分享 ---
+private fun shareCSV(context: Context, csvData: String, fileName: String) {
+    try {
+        val file = File(context.cacheDir, "$fileName.csv")
+        FileOutputStream(file).use { outputStream ->
+            outputStream.write(csvData.toByteArray())
+        }
+        
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        
+        context.startActivity(Intent.createChooser(shareIntent, "分享产状数据"))
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+// --- 15. 产状指南针（美化版） ---
 @Composable
 fun AttitudeCompass(dipDirection: Float) {
     Canvas(
         modifier = Modifier
             .size(120.dp)
-            .background(Color(0xFFE2E8F0), RoundedCornerShape(60))
+            .background(Color(0xFF1A2332), RoundedCornerShape(60))
     ) {
         val centerX = size.width / 2f
         val centerY = size.height / 2f
         val radius = size.width / 2f - 8f
         
+        // 外圈发光效果
         drawCircle(
-            color = Color(0xFF94A3B8),
+            color = Color(0xFF0EA5E9).copy(alpha = 0.15f),
+            radius = radius + 8f,
+            center = Offset(centerX, centerY)
+        )
+        
+        // 外圈
+        drawCircle(
+            color = Color(0xFF64748B),
             radius = radius,
             center = Offset(centerX, centerY),
             style = Stroke(width = 2f)
         )
         
+        // 内圈
+        drawCircle(
+            color = Color(0xFF64748B).copy(alpha = 0.3f),
+            radius = radius * 0.7f,
+            center = Offset(centerX, centerY),
+            style = Stroke(width = 1f)
+        )
+        
+        // 十字线
+        for (i in 0..3) {
+            val angle = i * PI / 2
+            val endX = centerX + radius * 0.7f * cos(angle).toFloat()
+            val endY = centerY + radius * 0.7f * sin(angle).toFloat()
+            drawLine(
+                color = Color(0xFF64748B).copy(alpha = 0.2f),
+                start = Offset(centerX, centerY),
+                end = Offset(endX, endY),
+                strokeWidth = 1f
+            )
+        }
+        
+        // 方向刻度
         val directions = listOf("N", "E", "S", "W")
         for (i in 0..3) {
             val angle = i * PI / 2 - PI / 2
@@ -1731,19 +1827,49 @@ fun AttitudeCompass(dipDirection: Float) {
             val y = centerY + textRadius * sin(angle).toFloat()
             drawContext.canvas.nativeCanvas.apply {
                 val paint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.parseColor("#64748B")
-                    textSize = 16f
+                    color = android.graphics.Color.parseColor(
+                        if (i == 0) "#4CAF50" else "#94A3B8"
+                    )
+                    textSize = if (i == 0) 18f else 14f
                     textAlign = android.graphics.Paint.Align.CENTER
+                    typeface = if (i == 0) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
                 }
                 drawText(directions[i], x, y + 6, paint)
             }
         }
         
+        // 刻度线
+        for (i in 0..35) {
+            val angle = i * PI / 18 - PI / 2
+            val innerRadius = if (i % 5 == 0) radius - 12f else radius - 6f
+            val outerRadius = radius - 2f
+            val startX = centerX + innerRadius * cos(angle).toFloat()
+            val startY = centerY + innerRadius * sin(angle).toFloat()
+            val endX = centerX + outerRadius * cos(angle).toFloat()
+            val endY = centerY + outerRadius * sin(angle).toFloat()
+            drawLine(
+                color = if (i % 5 == 0) Color.White else Color(0xFF64748B).copy(alpha = 0.5f),
+                start = Offset(startX, startY),
+                end = Offset(endX, endY),
+                strokeWidth = if (i % 5 == 0) 2f else 1f
+            )
+        }
+        
+        // 指针
         val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
-        val pointerLength = radius * 0.7f
+        val pointerLength = radius * 0.65f
         val endX = centerX + pointerLength * cos(angleRad).toFloat()
         val endY = centerY + pointerLength * sin(angleRad).toFloat()
         
+        // 指针发光效果
+        drawLine(
+            color = Color(0xFFEF4444).copy(alpha = 0.3f),
+            start = Offset(centerX, centerY),
+            end = Offset(endX, endY),
+            strokeWidth = 12f
+        )
+        
+        // 指针主体
         drawLine(
             color = Color(0xFFEF4444),
             start = Offset(centerX, centerY),
@@ -1751,20 +1877,44 @@ fun AttitudeCompass(dipDirection: Float) {
             strokeWidth = 4f
         )
         
+        // 指针头部三角
+        val headAngle = angleRad
+        val headLength = 12f
+        val headX = endX - headLength * cos(headAngle).toFloat()
+        val headY = endY - headLength * sin(headAngle).toFloat()
+        
+        val path = Path()
+        path.moveTo(endX, endY)
+        path.lineTo(headX - 6 * sin(headAngle).toFloat(), headY + 6 * cos(headAngle).toFloat())
+        path.lineTo(headX + 6 * sin(headAngle).toFloat(), headY - 6 * cos(headAngle).toFloat())
+        path.close()
+        
+        drawPath(
+            path = path,
+            color = Color(0xFFEF4444)
+        )
+        
+        // 中心点
         drawCircle(
             color = Color(0xFF0EA5E9),
             radius = 6f,
             center = Offset(centerX, centerY)
         )
+        drawCircle(
+            color = Color(0xFFFFFFFF),
+            radius = 2f,
+            center = Offset(centerX, centerY)
+        )
         
+        // 数值显示
         drawContext.canvas.nativeCanvas.apply {
             val paint = android.graphics.Paint().apply {
-                color = android.graphics.Color.parseColor("#1E293B")
-                textSize = 18f
+                color = android.graphics.Color.parseColor("#FFFFFF")
+                textSize = 16f
                 textAlign = android.graphics.Paint.Align.CENTER
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
-            drawText("${String.format("%.0f", dipDirection)}°", centerX, centerY + radius + 20, paint)
+            drawText("${String.format("%.0f", dipDirection)}°", centerX, centerY + radius + 24, paint)
         }
     }
 }
@@ -1777,6 +1927,7 @@ fun ProjectionFullscreenContent(
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("赤平投影", "玫瑰花图")
+    var selectedIndices by remember { mutableStateOf<Set<Int>>(setOf()) }
 
     Column(
         modifier = Modifier
@@ -1786,6 +1937,7 @@ fun ProjectionFullscreenContent(
     ) {
         Text("📊 赤平投影 & 玫瑰花图", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
 
+        // Tab切换
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1825,10 +1977,139 @@ fun ProjectionFullscreenContent(
                 }
             }
         } else {
-            when (selectedTab) {
-                0 -> StereographicProjectionChart(attitudeHistory = attitudeHistory)
-                1 -> RoseDiagramChart(attitudeHistory = attitudeHistory)
+            // 数据选择
+            Text(
+                "选择数据 (${selectedIndices.size}/${attitudeHistory.size})",
+                fontSize = 13.sp,
+                color = Color(0xFF64748B)
+            )
+            
+            // 数据列表 - 可滑动选择
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 120.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp)
+                ) {
+                    items(attitudeHistory.indices.toList()) { index ->
+                        val attitude = attitudeHistory[index]
+                        val isSelected = selectedIndices.contains(index)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isSelected) Color(0xFFE8F5E9) else Color.Transparent,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(6.dp)
+                                .clickable {
+                                    selectedIndices = if (isSelected) {
+                                        selectedIndices - index
+                                    } else {
+                                        selectedIndices + index
+                                    }
+                                },
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = {
+                                        selectedIndices = if (isSelected) {
+                                            selectedIndices - index
+                                        } else {
+                                            selectedIndices + index
+                                        }
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = Color(0xFF0EA5E9)
+                                    )
+                                )
+                                Column {
+                                    Text(
+                                        "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}°",
+                                        fontSize = 12.sp
+                                    )
+                                    Text(
+                                        "走向:${String.format("%.0f", attitude.strike)}°",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                            Text(
+                                "${android.text.format.DateFormat.format("HH:mm", attitude.time)}",
+                                fontSize = 10.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                        Divider()
+                    }
+                }
             }
+
+            // 绘图按钮
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        // 全选
+                        selectedIndices = attitudeHistory.indices.toSet()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF94A3B8)
+                    )
+                ) {
+                    Text("全选", fontSize = 12.sp)
+                }
+                Button(
+                    onClick = {
+                        selectedIndices = emptySet()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF94A3B8)
+                    )
+                ) {
+                    Text("取消全选", fontSize = 12.sp)
+                }
+                Button(
+                    onClick = {
+                        // 使用选中的数据绘图
+                    },
+                    modifier = Modifier.weight(2f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selectedIndices.isNotEmpty()) Color(0xFF0EA5E9) else Color(0xFF94A3B8)
+                    ),
+                    enabled = selectedIndices.isNotEmpty()
+                ) {
+                    Text("🔄 更新图表", fontSize = 14.sp)
+                }
+            }
+
+            // 绘图区域
+            val selectedData = selectedIndices.map { attitudeHistory[it] }
+            when (selectedTab) {
+                0 -> StereographicProjectionChart(attitudeHistory = selectedData)
+                1 -> RoseDiagramChart(attitudeHistory = selectedData)
+            }
+            
+            // 显示当前使用的数据量
+            Text(
+                "当前图表使用 ${selectedData.size} 组数据",
+                fontSize = 11.sp,
+                color = Color(0xFF94A3B8),
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -1908,49 +2189,60 @@ fun StereographicProjectionChart(attitudeHistory: List<AttitudeData>) {
                 Color(0xFF8B5CF6)
             )
             
-            attitudeHistory.forEachIndexed { index, attitude ->
-                val dipRad = Math.toRadians(attitude.dip.toDouble())
-                val dipDirRad = Math.toRadians(attitude.dipDirection.toDouble())
-                
-                val r = radius * tan(PI / 4 - dipRad / 2).toFloat()
-                val x = centerX + r * sin(dipDirRad).toFloat()
-                val y = centerY - r * cos(dipDirRad).toFloat()
-                
-                drawCircle(
-                    color = colors[index % colors.size],
-                    radius = 6f,
-                    center = Offset(x, y)
-                )
-                
-                drawCircle(
-                    color = colors[index % colors.size].copy(alpha = 0.3f),
-                    radius = 12f,
-                    center = Offset(x, y),
-                    style = Stroke(width = 1f)
-                )
-            }
-
-            if (attitudeHistory.size <= 5) {
+            if (attitudeHistory.isNotEmpty()) {
                 attitudeHistory.forEachIndexed { index, attitude ->
-                    val labelX = 16f
-                    val labelY = 32f + index * 20f
+                    val dipRad = Math.toRadians(attitude.dip.toDouble())
+                    val dipDirRad = Math.toRadians(attitude.dipDirection.toDouble())
+                    
+                    val r = radius * tan(PI / 4 - dipRad / 2).toFloat()
+                    val x = centerX + r * sin(dipDirRad).toFloat()
+                    val y = centerY - r * cos(dipDirRad).toFloat()
+                    
                     drawCircle(
                         color = colors[index % colors.size],
-                        radius = 4f,
-                        center = Offset(labelX, labelY)
+                        radius = 6f,
+                        center = Offset(x, y)
                     )
-                    drawContext.canvas.nativeCanvas.apply {
-                        val paint = android.graphics.Paint().apply {
-                            color = android.graphics.Color.parseColor("#1E293B")
-                            textSize = 12f
-                        }
-                        drawText(
-                            "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}°",
-                            labelX + 10,
-                            labelY + 4,
-                            paint
+                    
+                    drawCircle(
+                        color = colors[index % colors.size].copy(alpha = 0.3f),
+                        radius = 12f,
+                        center = Offset(x, y),
+                        style = Stroke(width = 1f)
+                    )
+                }
+
+                if (attitudeHistory.size <= 5) {
+                    attitudeHistory.forEachIndexed { index, attitude ->
+                        val labelX = 16f
+                        val labelY = 32f + index * 20f
+                        drawCircle(
+                            color = colors[index % colors.size],
+                            radius = 4f,
+                            center = Offset(labelX, labelY)
                         )
+                        drawContext.canvas.nativeCanvas.apply {
+                            val paint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.parseColor("#1E293B")
+                                textSize = 12f
+                            }
+                            drawText(
+                                "#${index + 1}: ${String.format("%.0f", attitude.dipDirection)}°/${String.format("%.0f", attitude.dip)}°",
+                                labelX + 10,
+                                labelY + 4,
+                                paint
+                            )
+                        }
                     }
+                }
+            } else {
+                drawContext.canvas.nativeCanvas.apply {
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.parseColor("#94A3B8")
+                        textSize = 20f
+                        textAlign = android.graphics.Paint.Align.CENTER
+                    }
+                    drawText("无数据", centerX, centerY + 6, paint)
                 }
             }
         }
@@ -1976,11 +2268,13 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
             val binSize = 10.0
             val counts = IntArray(bins)
             
-            attitudeHistory.forEach { attitude ->
-                var strike = attitude.strike
-                if (strike > 180) strike -= 180
-                val binIndex = (strike / binSize).toInt().coerceIn(0, bins - 1)
-                counts[binIndex]++
+            if (attitudeHistory.isNotEmpty()) {
+                attitudeHistory.forEach { attitude ->
+                    var strike = attitude.strike
+                    if (strike > 180) strike -= 180
+                    val binIndex = (strike / binSize).toInt().coerceIn(0, bins - 1)
+                    counts[binIndex]++
+                }
             }
 
             val maxCount = counts.maxOrNull()?.toFloat() ?: 1f
@@ -2052,14 +2346,16 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                 val alpha = 0.3f + 0.7f * (count / maxCount)
                 drawPath(
                     path = path,
-                    color = roseColor.copy(alpha = alpha)
+                    color = roseColor.copy(alpha = if (count > 0) alpha else 0.1f)
                 )
                 
-                drawPath(
-                    path = path,
-                    color = roseColor.copy(alpha = 0.8f),
-                    style = Stroke(width = 1f)
-                )
+                if (count > 0) {
+                    drawPath(
+                        path = path,
+                        color = roseColor.copy(alpha = 0.8f),
+                        style = Stroke(width = 1f)
+                    )
+                }
             }
 
             drawCircle(
@@ -2085,6 +2381,11 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
                     52f,
                     paint
                 )
+                if (attitudeHistory.isEmpty()) {
+                    paint.color = android.graphics.Color.parseColor("#94A3B8")
+                    paint.textSize = 20f
+                    drawText("无数据", centerX, centerY + 6, paint)
+                }
             }
         }
     }

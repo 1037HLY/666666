@@ -120,6 +120,7 @@ class LocationRepository(
     // ===== 产状测量 =====
     private var sensorListener: SensorEventListener? = null
     private val sensorHistory = mutableListOf<Triple<Float, Float, Float>>()
+    private val orientation = FloatArray(3)
 
     // ===== 协程 =====
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -599,31 +600,24 @@ class LocationRepository(
                     if (SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)) {
                         SensorManager.getOrientation(rotationMatrix, orientation)
                         
-                        // 从旋转矩阵提取岩面产状
                         val normalX = rotationMatrix[6].toDouble()
                         val normalY = rotationMatrix[7].toDouble()
                         val normalZ = rotationMatrix[8].toDouble()
                         
-                        // 计算倾角
                         val dipRad = asin(abs(normalZ))
                         val dip = Math.toDegrees(dipRad).toFloat()
                         
-                        // 计算倾向
                         var dipDirection = Math.toDegrees(atan2(normalY, normalX)).toFloat()
                         dipDirection = (dipDirection + 360) % 360
                         
-                        // 计算走向
-                        var strike = (dipDirection + 90) % 360
-                        
-                        // 重力法辅助计算
-                        val gx = gravity[0]
-                        val gy = gravity[1]
-                        val gz = gravity[2]
+                        val gx = gravity[0].toDouble()
+                        val gy = gravity[1].toDouble()
+                        val gz = gravity[2].toDouble()
                         val gravMag = sqrt(gx * gx + gy * gy + gz * gz)
                         
                         if (gravMag > 0) {
                             val dipFromGravity = Math.toDegrees(acos(abs(gz) / gravMag)).toFloat()
-                            val gravityDipDir = Math.toDegrees(atan2(gy.toDouble(), gx.toDouble())).toFloat()
+                            val gravityDipDir = Math.toDegrees(atan2(gy, gx)).toFloat()
                             var gravityDipDirNormalized = (gravityDipDir + 360) % 360
                             
                             val finalDip = dip * 0.7f + dipFromGravity * 0.3f
@@ -666,8 +660,6 @@ class LocationRepository(
         }
         Log.d(TAG, "✅ 精确产状测量已启动")
     }
-
-    private val orientation = FloatArray(3)
 
     private fun smoothSensorData(): Triple<Float, Float, Float> {
         if (sensorHistory.isEmpty()) {

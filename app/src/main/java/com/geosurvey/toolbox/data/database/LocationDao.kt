@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface LocationDao {
+    // ===== 定位数据 =====
     @Insert
     suspend fun insertLocation(location: LocationEntity): Long
 
@@ -33,4 +34,30 @@ interface LocationDao {
 
     @Query("SELECT COUNT(*) FROM tracks")
     suspend fun getTrackCount(): Int
+
+    // ===== 样本数据 =====
+    @Insert
+    suspend fun insertSample(sample: SampleEntity): Long
+
+    @Query("SELECT * FROM samples ORDER BY time DESC")
+    suspend fun getAllSamples(): List<SampleEntity>
+
+    @Query("DELETE FROM samples")
+    suspend fun deleteAllSamples()
+
+    @Query("SELECT COUNT(*) FROM samples")
+    suspend fun getSampleCount(): Int
+
+    // ===== 钻孔样本数据 =====
+    @Insert
+    suspend fun insertDrillSample(sample: DrillSampleEntity): Long
+
+    @Query("SELECT * FROM drill_samples ORDER BY time DESC")
+    suspend fun getAllDrillSamples(): List<DrillSampleEntity>
+
+    @Query("DELETE FROM drill_samples")
+    suspend fun deleteAllDrillSamples()
+
+    @Query("SELECT COUNT(*) FROM drill_samples")
+    suspend fun getDrillSampleCount(): Int
 }

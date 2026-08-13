@@ -5,9 +5,6 @@ import androidx.room.Insert
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-/**
- * 定位数据DAO
- */
 @Dao
 interface LocationDao {
     // ===== 定位数据 =====

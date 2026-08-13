@@ -16,9 +16,14 @@ import android.os.Bundle
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import com.geosurvey.toolbox.data.database.LocationDao
 import com.geosurvey.toolbox.data.database.LocationEntity
 import com.geosurvey.toolbox.data.database.TrackEntity
+import com.geosurvey.toolbox.data.database.SampleEntity
+import com.geosurvey.toolbox.data.database.DrillSampleEntity
 import com.geosurvey.toolbox.domain.model.Constellation
 import com.geosurvey.toolbox.domain.model.LocationData
 import com.geosurvey.toolbox.domain.model.LocationQuality
@@ -27,8 +32,12 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import java.util.Locale
 import kotlin.math.*
+
+// 数据存储扩展
+private val Context.dataStore by preferencesDataStore("settings")
 
 data class AttitudeData(
     val id: Long = 0,
@@ -42,6 +51,36 @@ data class AttitudeData(
     val note: String = ""
 )
 
+// 样本数据类
+data class SampleData(
+    val id: Long = 0,
+    val sampleId: String = "",
+    val type: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val altitude: Double = 0.0,
+    val depth: Double = 0.0,
+    val description: String = "",
+    val time: Long = 0,
+    val note: String = ""
+)
+
+// 钻孔样本数据类
+data class DrillSampleData(
+    val id: Long = 0,
+    val holeId: String = "",
+    val sampleId: String = "",
+    val depthFrom: Double = 0.0,
+    val depthTo: Double = 0.0,
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val altitude: Double = 0.0,
+    val rockType: String = "",
+    val description: String = "",
+    val time: Long = 0,
+    val note: String = ""
+)
+
 class LocationRepository(
     private val context: Context,
     private val locationDao: LocationDao
@@ -51,6 +90,7 @@ class LocationRepository(
         private const val MIN_SATELLITES = 4
         private const val MIN_SNR = 15.0f
         private const val MAX_HISTORY_SIZE = 20
+        private val CALIBRATION_OFFSET_KEY = floatPreferencesKey("calibration_offset")
     }
 
     private val locationManager: LocationManager by lazy {
@@ -100,6 +140,13 @@ class LocationRepository(
     private val _attitudeHistory = MutableStateFlow<List<AttitudeData>>(emptyList())
     val attitudeHistory: StateFlow<List<AttitudeData>> = _attitudeHistory.asStateFlow()
 
+    // ===== 样本状态 =====
+    private val _samples = MutableStateFlow<List<SampleData>>(emptyList())
+    val samples: StateFlow<List<SampleData>> = _samples.asStateFlow()
+    
+    private val _drillSamples = MutableStateFlow<List<DrillSampleData>>(emptyList())
+    val drillSamples: StateFlow<List<DrillSampleData>> = _drillSamples.asStateFlow()
+
     // ===== 内部变量 =====
     private var satelliteCount = 0
     private var usedSatelliteCount = 0
@@ -113,7 +160,7 @@ class LocationRepository(
     private val sensorHistory = mutableListOf<Triple<Float, Float, Float>>()
     private val orientation = FloatArray(3)
     
-    // 手动校正偏移
+    // 手动校正偏移 - 从DataStore加载
     private var calibrationOffset = 0f
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -132,6 +179,13 @@ class LocationRepository(
         val featureName: String = "",
         val postalCode: String = ""
     )
+
+    init {
+        // 加载保存的校正偏移
+        repositoryScope.launch {
+            loadCalibrationOffset()
+        }
+    }
 
     // ============ GNSS 回调 ============
     private inner class GnssStatusCallback : android.location.GnssStatus.Callback() {
@@ -512,7 +566,7 @@ class LocationRepository(
         _navigationBearing.value = (bearing + 360) % 360
     }
 
-    // ============ 产状测量 - 修复版 ============
+    // ============ 产状测量 ============
     fun startAttitudeMeasurement() {
         Log.d(TAG, "启动产状测量")
         
@@ -567,35 +621,28 @@ class LocationRepository(
                         if (SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)) {
                             SensorManager.getOrientation(rotationMatrix, orientation)
                             
-                            // 获取方位角
                             val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
                             val pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
                             val roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
                             
-                            // 计算倾角
                             val pitchRad = Math.toRadians(pitch.toDouble())
                             val rollRad = Math.toRadians(roll.toDouble())
                             val dipRad = atan(sqrt(tan(pitchRad).pow(2) + tan(rollRad).pow(2)))
                             val dip = Math.toDegrees(dipRad).toFloat().coerceIn(0f, 90f)
                             
-                            // ===== 修复：倾向 = 方位角，然后加180度修正 =====
                             var dipDirection = azimuth
-                            // 应用手动校正偏移
                             dipDirection = (dipDirection + calibrationOffset + 360) % 360
                             
-                            // ===== 计算走向 =====
                             var strike = (dipDirection + 90) % 360
                             if (strike > 180) {
                                 strike -= 180
                             }
                             
-                            // 添加到历史
                             sensorHistory.add(Triple(strike, dip, dipDirection))
                             if (sensorHistory.size > MAX_HISTORY_SIZE) {
                                 sensorHistory.removeAt(0)
                             }
                             
-                            // 平滑
                             val (smoothedStrike, smoothedDip, smoothedDipDir) = smoothSensorData()
                             
                             val currentLoc = _currentLocation.value
@@ -688,13 +735,83 @@ class LocationRepository(
         }
     }
     
-    // ============ 产状校正 ============
+    // ============ 产状校正 - 持久化 ============
+    suspend fun loadCalibrationOffset() {
+        try {
+            context.dataStore.edit { preferences ->
+                calibrationOffset = preferences[CALIBRATION_OFFSET_KEY] ?: 0f
+            }
+            Log.d(TAG, "加载校正偏移: $calibrationOffset")
+        } catch (e: Exception) {
+            Log.e(TAG, "加载校正偏移失败: ${e.message}")
+        }
+    }
+    
+    suspend fun saveCalibrationOffset(offset: Float) {
+        try {
+            context.dataStore.edit { preferences ->
+                preferences[CALIBRATION_OFFSET_KEY] = offset
+            }
+            calibrationOffset = offset
+            Log.d(TAG, "保存校正偏移: $offset")
+        } catch (e: Exception) {
+            Log.e(TAG, "保存校正偏移失败: ${e.message}")
+        }
+    }
+    
     fun setCalibrationOffset(offset: Float) {
         calibrationOffset = offset
-        Log.d(TAG, "产状校正偏移: $offset°")
+        repositoryScope.launch {
+            saveCalibrationOffset(offset)
+        }
     }
     
     fun getCalibrationOffset(): Float = calibrationOffset
+
+    // ============ 样本记录 ============
+    suspend fun saveSample(sample: SampleData) {
+        withContext(Dispatchers.IO) {
+            try {
+                val history = _samples.value.toMutableList()
+                history.add(sample)
+                if (history.size > 500) {
+                    history.removeAt(0)
+                }
+                _samples.value = history
+                Log.d(TAG, "样本已保存: ${sample.sampleId}")
+            } catch (e: Exception) {
+                Log.e(TAG, "保存样本异常: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun saveDrillSample(sample: DrillSampleData) {
+        withContext(Dispatchers.IO) {
+            try {
+                val history = _drillSamples.value.toMutableList()
+                history.add(sample)
+                if (history.size > 500) {
+                    history.removeAt(0)
+                }
+                _drillSamples.value = history
+                Log.d(TAG, "钻孔样本已保存: ${sample.sampleId}")
+            } catch (e: Exception) {
+                Log.e(TAG, "保存钻孔样本异常: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun clearSamples() {
+        withContext(Dispatchers.IO) {
+            _samples.value = emptyList()
+        }
+    }
+
+    suspend fun clearDrillSamples() {
+        withContext(Dispatchers.IO) {
+            _drillSamples.value = emptyList()
+        }
+    }
 
     // ============ 地址获取 ============
     private fun fetchLocationName(lat: Double, lng: Double) {

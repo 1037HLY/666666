@@ -1505,7 +1505,7 @@ fun AnalysisScreen(
     }
 }
 
-// --- 14. 产状测量全屏内容（修复走向 + 美化指南针） ---
+// --- 14. 产状测量全屏内容 ---
 @Composable
 fun AttitudeFullscreenContent(
     viewModel: LocationViewModel,
@@ -1773,7 +1773,7 @@ private fun shareCSV(context: Context, csvData: String, fileName: String) {
     }
 }
 
-// --- 15. 美化版指南针（参考智能地质罗盘） ---
+// --- 15. 美化版指南针 ---
 @Composable
 fun AttitudeCompass(dipDirection: Float, dip: Float) {
     Box(
@@ -1851,10 +1851,10 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                     val paint = android.graphics.Paint().apply {
                         color = android.graphics.Color.parseColor(
                             when (i) {
-                                0 -> "#4CAF50"      // N 绿色
-                                1 -> "#64748B"      // E 灰色
-                                2 -> "#EF4444"      // S 红色
-                                else -> "#64748B"   // W 灰色
+                                0 -> "#4CAF50"
+                                1 -> "#64748B"
+                                2 -> "#EF4444"
+                                else -> "#64748B"
                             }
                         )
                         textSize = if (i == 0) 16f else 12f
@@ -1882,7 +1882,8 @@ fun AttitudeCompass(dipDirection: Float, dip: Float) {
                 )
             }
             
-            // 倾向指针            val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
+            // 倾向指针
+            val angleRad = Math.toRadians(dipDirection.toDouble()) - PI / 2
             val pointerLength = radius * 0.6f
             val endX = centerX + pointerLength * cos(angleRad).toFloat()
             val endY = centerY + pointerLength * sin(angleRad).toFloat()
@@ -2315,6 +2316,7 @@ fun RoseDiagramChart(attitudeHistory: List<AttitudeData>) {
             if (attitudeHistory.isNotEmpty()) {
                 attitudeHistory.forEach { attitude ->
                     var strike = attitude.strike
+                    if (strike > 180) strike -= 180
                     val binIndex = (strike / binSize).toInt().coerceIn(0, bins - 1)
                     counts[binIndex]++
                 }

@@ -30,12 +30,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 import kotlin.math.*
 
-// --- 产状数据类 ---
 data class AttitudeData(
     val id: Long = 0,
-    val strike: Float,      // 走向 (0-360)
-    val dip: Float,         // 倾角 (0-90)
-    val dipDirection: Float, // 倾向 (0-360)
+    val strike: Float,
+    val dip: Float,
+    val dipDirection: Float,
     val latitude: Double,
     val longitude: Double,
     val altitude: Double,
@@ -53,6 +52,7 @@ class LocationRepository(
         private const val MIN_RECORD_DISTANCE = 1.0
         private const val MIN_SATELLITES = 4
         private const val MIN_SNR = 15.0f
+        private const val MAX_HISTORY_SIZE = 30
     }
 
     private val locationManager: LocationManager by lazy {
@@ -117,19 +117,9 @@ class LocationRepository(
     private var isMoving = false
     private var consecutiveStationaryCount = 0
 
-    // ===== 产状测量 - 增强版 =====
+    // ===== 产状测量 =====
     private var sensorListener: SensorEventListener? = null
-    private var filteredStrike = 0f
-    private var filteredDip = 0f
-    private var filteredDipDirection = 0f
-    private var filterCount = 0
-    
-    // 传感器数据缓存 - 用于平滑滤波
     private val sensorHistory = mutableListOf<Triple<Float, Float, Float>>()
-    private val MAX_HISTORY_SIZE = 30
-
-    // 低通滤波器参数
-    private val ALPHA = 0.25f  // 滤波系数
 
     // ===== 协程 =====
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -554,9 +544,9 @@ class LocationRepository(
         _navigationBearing.value = (bearing + 360) % 360
     }
 
-    // ============ 产状测量 - 增强版算法 ============
+    // ============ 产状测量 - 完全重写 ============
     fun startAttitudeMeasurement() {
-        Log.d(TAG, "开始增强版产状测量")
+        Log.d(TAG, "启动精确产状测量 (传感器融合)")
         
         val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
@@ -567,82 +557,86 @@ class LocationRepository(
             return
         }
         
-        // 清空历史数据
         sensorHistory.clear()
-        filterCount = 0
         
         sensorListener = object : SensorEventListener {
+            private val gravity = FloatArray(3)
+            private val geomagnetic = FloatArray(3)
             private val rotationMatrix = FloatArray(9)
-            private val orientation = FloatArray(3)
-            private var accelData = FloatArray(3)
-            private var magnetData = FloatArray(3)
-            private var hasAccel = false
-            private var hasMagnet = false
+            private var hasGravity = false
+            private var hasGeomagnetic = false
+            private val alpha = 0.15f
             
             override fun onSensorChanged(event: SensorEvent) {
                 when (event.sensor.type) {
                     Sensor.TYPE_ACCELEROMETER -> {
-                        accelData = event.values.clone()
-                        hasAccel = true
+                        if (hasGravity) {
+                            gravity[0] = alpha * event.values[0] + (1 - alpha) * gravity[0]
+                            gravity[1] = alpha * event.values[1] + (1 - alpha) * gravity[1]
+                            gravity[2] = alpha * event.values[2] + (1 - alpha) * gravity[2]
+                        } else {
+                            gravity[0] = event.values[0]
+                            gravity[1] = event.values[1]
+                            gravity[2] = event.values[2]
+                            hasGravity = true
+                        }
                     }
                     Sensor.TYPE_MAGNETIC_FIELD -> {
-                        magnetData = event.values.clone()
-                        hasMagnet = true
-                    }
-                    Sensor.TYPE_GYROSCOPE -> {
-                        // 陀螺仪数据可用于辅助稳定
+                        if (hasGeomagnetic) {
+                            geomagnetic[0] = alpha * event.values[0] + (1 - alpha) * geomagnetic[0]
+                            geomagnetic[1] = alpha * event.values[1] + (1 - alpha) * geomagnetic[1]
+                            geomagnetic[2] = alpha * event.values[2] + (1 - alpha) * geomagnetic[2]
+                        } else {
+                            geomagnetic[0] = event.values[0]
+                            geomagnetic[1] = event.values[1]
+                            geomagnetic[2] = event.values[2]
+                            hasGeomagnetic = true
+                        }
                     }
                 }
                 
-                if (hasAccel && hasMagnet) {
-                    // 使用改进的旋转矩阵计算
-                    if (SensorManager.getRotationMatrix(rotationMatrix, null, accelData, magnetData)) {
-                        // 修正旋转矩阵以提高精度
-                        SensorManager.remapCoordinateSystem(
-                            rotationMatrix,
-                            SensorManager.AXIS_X,
-                            SensorManager.AXIS_Z,
-                            rotationMatrix
-                        )
-                        
+                if (hasGravity && hasGeomagnetic) {
+                    if (SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic)) {
                         SensorManager.getOrientation(rotationMatrix, orientation)
                         
-                        // 获取原始角度
-                        var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                        var pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
-                        var roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
+                        // 从旋转矩阵提取岩面产状
+                        val normalX = rotationMatrix[6].toDouble()
+                        val normalY = rotationMatrix[7].toDouble()
+                        val normalZ = rotationMatrix[8].toDouble()
                         
-                        // 角度归一化
-                        azimuth = (azimuth + 360) % 360
+                        // 计算倾角
+                        val dipRad = asin(abs(normalZ))
+                        val dip = Math.toDegrees(dipRad).toFloat()
                         
-                        // 使用重力向量计算更精确的倾角
-                        val gx = accelData[0]
-                        val gy = accelData[1]
-                        val gz = accelData[2]
-                        val gravityMagnitude = sqrt(gx * gx + gy * gy + gz * gz)
+                        // 计算倾向
+                        var dipDirection = Math.toDegrees(atan2(normalY, normalX)).toFloat()
+                        dipDirection = (dipDirection + 360) % 360
                         
-                        if (gravityMagnitude > 0) {
-                            // 基于重力方向计算精确的倾角和倾向
-                            val dipFromGravity = calculateDipFromGravity(gx, gy, gz, gravityMagnitude)
-                            val dipDirFromGravity = calculateDipDirectionFromGravity(gx, gy)
+                        // 计算走向
+                        var strike = (dipDirection + 90) % 360
+                        
+                        // 重力法辅助计算
+                        val gx = gravity[0]
+                        val gy = gravity[1]
+                        val gz = gravity[2]
+                        val gravMag = sqrt(gx * gx + gy * gy + gz * gz)
+                        
+                        if (gravMag > 0) {
+                            val dipFromGravity = Math.toDegrees(acos(abs(gz) / gravMag)).toFloat()
+                            val gravityDipDir = Math.toDegrees(atan2(gy.toDouble(), gx.toDouble())).toFloat()
+                            var gravityDipDirNormalized = (gravityDipDir + 360) % 360
                             
-                            // 融合两种计算方法
-                            val finalDip = (dipFromGravity * 0.7f + calculateDip(pitch, roll) * 0.3f)
-                            val finalDipDir = (dipDirFromGravity * 0.7f + azimuth * 0.3f)
+                            val finalDip = dip * 0.7f + dipFromGravity * 0.3f
+                            val finalDipDir = dipDirection * 0.7f + gravityDipDirNormalized * 0.3f
+                            val finalStrike = (finalDipDir + 90) % 360
                             
-                            // 计算走向
-                            val strike = (finalDipDir + 90) % 360
-                            
-                            // 添加到历史数据
-                            sensorHistory.add(Triple(strike, finalDip, finalDipDir))
+                            sensorHistory.add(Triple(finalStrike, finalDip, finalDipDir))
                             if (sensorHistory.size > MAX_HISTORY_SIZE) {
                                 sensorHistory.removeAt(0)
                             }
                             
-                            // 应用平滑滤波
                             val (smoothedStrike, smoothedDip, smoothedDipDir) = smoothSensorData()
                             
-                            // 更新当前产状
                             val currentLoc = _currentLocation.value
                             _currentAttitude.value = AttitudeData(
                                 strike = smoothedStrike,
@@ -658,64 +652,35 @@ class LocationRepository(
                 }
             }
             
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                Log.d(TAG, "传感器精度变化: $accuracy")
+            }
         }
         
         sensorListener?.let {
-            sensorManager.registerListener(it, accelerometer, SensorManager.SENSOR_DELAY_UI)
-            sensorManager.registerListener(it, magnetometer, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(it, accelerometer, SensorManager.SENSOR_DELAY_FASTEST)
+            sensorManager.registerListener(it, magnetometer, SensorManager.SENSOR_DELAY_FASTEST)
             if (gyroscope != null) {
-                sensorManager.registerListener(it, gyroscope, SensorManager.SENSOR_DELAY_UI)
+                sensorManager.registerListener(it, gyroscope, SensorManager.SENSOR_DELAY_FASTEST)
             }
         }
-        Log.d(TAG, "✅ 增强版产状测量已启动")
+        Log.d(TAG, "✅ 精确产状测量已启动")
     }
 
-    /**
-     * 基于重力方向计算倾角
-     */
-    private fun calculateDipFromGravity(gx: Float, gy: Float, gz: Float, magnitude: Float): Float {
-        // 使用重力方向计算倾角: dip = arctan(sqrt(gx^2 + gy^2) / |gz|)
-        val horizontalComponent = sqrt(gx * gx + gy * gy)
-        val dipRad = atan2(horizontalComponent, abs(gz))
-        return Math.toDegrees(dipRad.toDouble()).toFloat()
-    }
+    private val orientation = FloatArray(3)
 
-    /**
-     * 基于重力方向计算倾向
-     */
-    private fun calculateDipDirectionFromGravity(gx: Float, gy: Float): Float {
-        var dipDir = Math.toDegrees(atan2(gy.toDouble(), gx.toDouble())).toFloat()
-        dipDir = (dipDir + 360) % 360
-        return dipDir
-    }
-
-    /**
-     * 计算倾角 (传统方法)
-     */
-    private fun calculateDip(pitch: Float, roll: Float): Float {
-        val pitchRad = Math.toRadians(pitch.toDouble())
-        val rollRad = Math.toRadians(roll.toDouble())
-        val dipRad = atan(sqrt(tan(pitchRad).pow(2) + tan(rollRad).pow(2)))
-        return Math.toDegrees(dipRad).toFloat().coerceIn(0f, 90f)
-    }
-
-    /**
-     * 平滑传感器数据 - 使用加权移动平均
-     */
     private fun smoothSensorData(): Triple<Float, Float, Float> {
         if (sensorHistory.isEmpty()) {
             return Triple(0f, 0f, 0f)
         }
         
-        // 给较新的数据更高的权重
         var sumStrike = 0f
         var sumDip = 0f
         var sumDipDir = 0f
         var totalWeight = 0f
         
         sensorHistory.forEachIndexed { index, data ->
-            val weight = (index + 1).toFloat() / sensorHistory.size
+            val weight = (index + 1).toFloat().pow(1.5f) / sensorHistory.size
             sumStrike += data.first * weight
             sumDip += data.second * weight
             sumDipDir += data.third * weight
@@ -724,9 +689,9 @@ class LocationRepository(
         
         if (totalWeight > 0) {
             return Triple(
-                sumStrike / totalWeight,
+                (sumStrike / totalWeight + 360) % 360,
                 sumDip / totalWeight,
-                sumDipDir / totalWeight
+                (sumDipDir / totalWeight + 360) % 360
             )
         }
         
@@ -743,7 +708,6 @@ class LocationRepository(
         }
         sensorListener = null
         sensorHistory.clear()
-        filterCount = 0
         Log.d(TAG, "停止产状测量")
     }
 

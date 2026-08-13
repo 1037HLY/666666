@@ -2816,11 +2816,14 @@ fun SampleFullscreenContent(
     sampleType: String
 ) {
     var sampleId by remember { mutableStateOf("") }
-    var depth by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var exportFileName by remember { mutableStateOf("普通样本记录") }
     val currentLocation by viewModel.currentLocation.collectAsState()
     val samples by viewModel.samples.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -2871,9 +2874,9 @@ fun SampleFullscreenContent(
                     )
                 )
                 OutlinedTextField(
-                    value = depth,
-                    onValueChange = { depth = it },
-                    label = { Text("深度 (m)") },
+                    value = weight,
+                    onValueChange = { weight = it },
+                    label = { Text("重量 (kg)") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -2910,14 +2913,14 @@ fun SampleFullscreenContent(
                         latitude = currentLocation!!.latitude,
                         longitude = currentLocation!!.longitude,
                         altitude = currentLocation!!.altitude,
-                        depth = depth.toDoubleOrNull() ?: 0.0,
+                        weight = weight.toDoubleOrNull() ?: 0.0,
                         description = description,
                         time = System.currentTimeMillis(),
                         note = note
                     )
                     viewModel.saveSample(sample)
                     sampleId = ""
-                    depth = ""
+                    weight = ""
                     description = ""
                     note = ""
                 }
@@ -2929,6 +2932,44 @@ fun SampleFullscreenContent(
             enabled = sampleId.isNotBlank() && currentLocation != null
         ) {
             Text("💾 保存样本", fontSize = 16.sp)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = exportFileName,
+                onValueChange = { exportFileName = it },
+                label = { Text("文件名") },
+                modifier = Modifier.weight(2f),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF0EA5E9)
+                )
+            )
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        try {
+                            val csvData = viewModel.exportSamples()
+                            if (csvData.isNotEmpty()) {
+                                val fileName = if (exportFileName.isNotBlank()) exportFileName else "普通样本记录"
+                                shareCSV(context, csvData, fileName)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = samples.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF10B981)
+                )
+            ) {
+                Text("📤 导出CSV", fontSize = 14.sp)
+            }
         }
 
         Text(
@@ -2974,17 +3015,17 @@ fun SampleFullscreenContent(
                                     )
                                 }
                                 Text(
+                                    "重量: ${String.format("%.2f", sample.weight)}kg",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF0EA5E9)
+                                )
+                                Text(
                                     "${android.text.format.DateFormat.format("HH:mm:ss", sample.time)}",
                                     fontSize = 10.sp,
                                     color = Color(0xFF94A3B8)
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    "${String.format("%.1f", sample.depth)}m",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF0EA5E9)
-                                )
                                 if (sample.note.isNotEmpty()) {
                                     Text(
                                         "📝 ${sample.note}",
@@ -3021,11 +3062,19 @@ fun DrillSampleFullscreenContent(
     var sampleId by remember { mutableStateOf("") }
     var depthFrom by remember { mutableStateOf("") }
     var depthTo by remember { mutableStateOf("") }
+    var coreLength by remember { mutableStateOf("") }
+    var recoveryRate by remember { mutableStateOf("") }
+    var sampleLength by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var coreDiameter by remember { mutableStateOf("") }
     var rockType by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var exportFileName by remember { mutableStateOf("钻孔样本记录") }
     val currentLocation by viewModel.currentLocation.collectAsState()
     val drillSamples by viewModel.drillSamples.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -3065,26 +3114,32 @@ fun DrillSampleFullscreenContent(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = holeId,
-                    onValueChange = { holeId = it },
-                    label = { Text("钻孔编号") },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF0EA5E9)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = holeId,
+                        onValueChange = { holeId = it },
+                        label = { Text("钻孔编号") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
                     )
-                )
-                OutlinedTextField(
-                    value = sampleId,
-                    onValueChange = { sampleId = it },
-                    label = { Text("样本编号") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF0EA5E9)
+                    OutlinedTextField(
+                        value = sampleId,
+                        onValueChange = { sampleId = it },
+                        label = { Text("样本编号") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
                     )
-                )
+                }
+                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3110,6 +3165,70 @@ fun DrillSampleFullscreenContent(
                         )
                     )
                 }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = coreLength,
+                        onValueChange = { coreLength = it },
+                        label = { Text("岩心长 (m)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                    OutlinedTextField(
+                        value = recoveryRate,
+                        onValueChange = { recoveryRate = it },
+                        label = { Text("采取率 (%)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = sampleLength,
+                        onValueChange = { sampleLength = it },
+                        label = { Text("样长 (m)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                    OutlinedTextField(
+                        value = weight,
+                        onValueChange = { weight = it },
+                        label = { Text("重量 (kg)") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                }
+                
+                OutlinedTextField(
+                    value = coreDiameter,
+                    onValueChange = { coreDiameter = it },
+                    label = { Text("岩心直径 (mm)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF0EA5E9)
+                    )
+                )
+                
                 OutlinedTextField(
                     value = rockType,
                     onValueChange = { rockType = it },
@@ -3120,6 +3239,7 @@ fun DrillSampleFullscreenContent(
                         focusedBorderColor = Color(0xFF0EA5E9)
                     )
                 )
+                
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -3129,6 +3249,7 @@ fun DrillSampleFullscreenContent(
                         focusedBorderColor = Color(0xFF0EA5E9)
                     )
                 )
+                
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
@@ -3149,6 +3270,11 @@ fun DrillSampleFullscreenContent(
                         sampleId = sampleId,
                         depthFrom = depthFrom.toDoubleOrNull() ?: 0.0,
                         depthTo = depthTo.toDoubleOrNull() ?: 0.0,
+                        coreLength = coreLength.toDoubleOrNull() ?: 0.0,
+                        recoveryRate = recoveryRate.toDoubleOrNull() ?: 0.0,
+                        sampleLength = sampleLength.toDoubleOrNull() ?: 0.0,
+                        weight = weight.toDoubleOrNull() ?: 0.0,
+                        coreDiameter = coreDiameter.toDoubleOrNull() ?: 0.0,
                         latitude = currentLocation!!.latitude,
                         longitude = currentLocation!!.longitude,
                         altitude = currentLocation!!.altitude,
@@ -3162,6 +3288,11 @@ fun DrillSampleFullscreenContent(
                     sampleId = ""
                     depthFrom = ""
                     depthTo = ""
+                    coreLength = ""
+                    recoveryRate = ""
+                    sampleLength = ""
+                    weight = ""
+                    coreDiameter = ""
                     rockType = ""
                     description = ""
                     note = ""
@@ -3174,6 +3305,44 @@ fun DrillSampleFullscreenContent(
             enabled = holeId.isNotBlank() && sampleId.isNotBlank() && currentLocation != null
         ) {
             Text("💾 保存钻孔样本", fontSize = 16.sp)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = exportFileName,
+                onValueChange = { exportFileName = it },
+                label = { Text("文件名") },
+                modifier = Modifier.weight(2f),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF0EA5E9)
+                )
+            )
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        try {
+                            val csvData = viewModel.exportDrillSamples()
+                            if (csvData.isNotEmpty()) {
+                                val fileName = if (exportFileName.isNotBlank()) exportFileName else "钻孔样本记录"
+                                shareCSV(context, csvData, fileName)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = drillSamples.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF10B981)
+                )
+            ) {
+                Text("📤 导出CSV", fontSize = 14.sp)
+            }
         }
 
         Text(
@@ -3211,6 +3380,11 @@ fun DrillSampleFullscreenContent(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )
+                                Text(
+                                    "深度: ${String.format("%.1f", sample.depthFrom)}-${String.format("%.1f", sample.depthTo)}m",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF0EA5E9)
+                                )
                                 if (sample.rockType.isNotEmpty()) {
                                     Text(
                                         "🪨 ${sample.rockType}",
@@ -3219,17 +3393,17 @@ fun DrillSampleFullscreenContent(
                                     )
                                 }
                                 Text(
-                                    "${String.format("%.1f", sample.depthFrom)}-${String.format("%.1f", sample.depthTo)}m",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF0EA5E9)
+                                    "岩心长:${String.format("%.2f", sample.coreLength)}m 采取率:${String.format("%.1f", sample.recoveryRate)}%",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF64748B)
                                 )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     "${android.text.format.DateFormat.format("HH:mm:ss", sample.time)}",
                                     fontSize = 10.sp,
                                     color = Color(0xFF94A3B8)
                                 )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
                                 if (sample.note.isNotEmpty()) {
                                     Text(
                                         "📝 ${sample.note}",

@@ -33,7 +33,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+        // ✅ 添加这行 - 允许实验性API
+        freeCompilerArgs = freeCompilerArgs + listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
+        )
+    }
 
     buildFeatures { compose = true }
 
@@ -59,27 +66,9 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.6")
 
-    // Room Database
-    implementation("androidx.room:room-runtime:2.6.0")
-    implementation("androidx.room:room-ktx:2.6.0")
-    kapt("androidx.room:room-compiler:2.6.0")
-
-    // DataStore
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-
-    // Permissions
-    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
-
     // Location
     implementation("com.google.android.gms:play-services-location:21.0.1")
-    
-    // CameraX
-    implementation("androidx.camera:camera-camera2:1.3.0")
-    implementation("androidx.camera:camera-lifecycle:1.3.0")
-    implementation("androidx.camera:camera-view:1.3.0")
-    
-    // EXIF
-    implementation("androidx.exifinterface:exifinterface:1.3.6")
+    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

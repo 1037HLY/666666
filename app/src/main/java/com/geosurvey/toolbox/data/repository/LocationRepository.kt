@@ -365,10 +365,8 @@ class LocationRepository(
 
                 _currentLocation.value = locationData
 
-                // 更新导航
                 updateNavigation(locationData)
 
-                // 轨迹记录
                 if (_isTracking.value) {
                     val shouldRecord = checkShouldRecord(locationData)
                     if (shouldRecord) {
@@ -376,7 +374,6 @@ class LocationRepository(
                     }
                 }
 
-                // 获取地址
                 fetchLocationName(lat, lng)
 
             } catch (e: Exception) {
@@ -512,7 +509,7 @@ class LocationRepository(
         _navigationBearing.value = (bearing + 360) % 360
     }
 
-    // ============ 产状测量 - 简化稳定版 ============
+    // ============ 产状测量 - 修复版 ============
     fun startAttitudeMeasurement() {
         Log.d(TAG, "启动产状测量")
         
@@ -581,8 +578,13 @@ class LocationRepository(
                             // 计算倾向
                             var dipDirection = (azimuth + 360) % 360
                             
-                            // 计算走向
+                            // ===== 修复：正确计算走向 =====
+                            // 走向 = 倾向 ± 90°，取锐角方向 (0-180°)
                             var strike = (dipDirection + 90) % 360
+                            // 如果走向 > 180，减去180得到锐角走向
+                            if (strike > 180) {
+                                strike -= 180
+                            }
                             
                             // 添加到历史
                             sensorHistory.add(Triple(strike, dip, dipDirection))
@@ -639,7 +641,7 @@ class LocationRepository(
         
         val size = sensorHistory.size
         return Triple(
-            (sumStrike / size + 360) % 360,
+            sumStrike / size,
             sumDip / size,
             (sumDipDir / size + 360) % 360
         )
@@ -670,7 +672,7 @@ class LocationRepository(
                     history.removeAt(0)
                 }
                 _attitudeHistory.value = history
-                Log.d(TAG, "产状已记录: 倾向=${saved.dipDirection}°, 倾角=${saved.dip}°")
+                Log.d(TAG, "产状已记录: 倾向=${saved.dipDirection}°, 倾角=${saved.dip}°, 走向=${saved.strike}°")
             } catch (e: Exception) {
                 Log.e(TAG, "保存产状异常: ${e.message}")
             }

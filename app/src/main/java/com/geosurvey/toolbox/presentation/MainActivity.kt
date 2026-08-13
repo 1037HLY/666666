@@ -3,10 +3,15 @@ package com.geosurvey.toolbox.presentation
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.location.LocationManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -50,6 +55,8 @@ import com.geosurvey.toolbox.domain.model.Constellation
 import com.geosurvey.toolbox.domain.model.LocationQuality
 import com.geosurvey.toolbox.presentation.viewmodel.LocationUiState
 import com.geosurvey.toolbox.presentation.viewmodel.LocationViewModel
+import com.geosurvey.toolbox.utils.CameraHelper
+import com.geosurvey.toolbox.utils.WatermarkHelper
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
@@ -58,6 +65,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.*
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 // --- 1. 定义导航路由 ---
 sealed class Screen(val route: String) {
@@ -3437,6 +3446,29 @@ fun CameraScreen(
     state: CameraScreenState,
     showFullscreen: (@Composable () -> Unit) -> Unit
 ) {
+    val viewModel: LocationViewModel = viewModel()
+    val context = LocalContext.current
+    val cameraHelper = remember { CameraHelper(context) }
+    val watermarkHelper = remember { WatermarkHelper(context) }
+    
+    val cameraPermissionState = rememberPermissionState(
+        Manifest.permission.CAMERA
+    )
+    val storagePermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        rememberPermissionState(Manifest.permission.READ_MEDIA_IMAGES)
+    } else {
+        rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    LaunchedEffect(Unit) {
+        if (!cameraPermissionState.status.isGranted) {
+            cameraPermissionState.launchPermissionRequest()
+        }
+        if (!storagePermissionState.status.isGranted) {
+            storagePermissionState.launchPermissionRequest()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -3448,18 +3480,24 @@ fun CameraScreen(
             modifier = Modifier.weight(1f),
             onClick = {
                 showFullscreen {
-                    Column {
-                        Text("📷 水印相机", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
-                        Text("相机预览", fontSize = 16.sp, color = Color(0xFF64748B))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("水印设置: 坐标 | 时间 | 地点", fontSize = 14.sp, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = {}) { Text("📸 拍照", fontSize = 16.sp) }
-                    }
+                    WatermarkCameraFullscreenContent(
+                        viewModel = viewModel,
+                        cameraHelper = cameraHelper,
+                        watermarkHelper = watermarkHelper,
+                        cameraPermissionState = cameraPermissionState,
+                        storagePermissionState = storagePermissionState
+                    )
                 }
             }
         ) {
-            Text("📷 点击打开相机", fontSize = 14.sp, color = Color(0xFF64748B))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Text("📷 水印相机", fontSize = 14.sp, color = Color(0xFF64748B))
+                val imageCount = cameraHelper.getImageFiles().size
+                Text("🖼️ ${imageCount}张", fontSize = 14.sp, color = Color(0xFF64748B))
+            }
         }
         
         SmallWindowCard(
@@ -3467,21 +3505,509 @@ fun CameraScreen(
             modifier = Modifier.weight(1f),
             onClick = {
                 showFullscreen {
-                    Column {
-                        Text("🖼️ 相册", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
-                        Text("共 0 张照片", fontSize = 16.sp, color = Color(0xFF64748B))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("暂无照片", fontSize = 14.sp, color = Color.Gray)
-                    }
+                    GalleryFullscreenContent(
+                        viewModel = viewModel,
+                        cameraHelper = cameraHelper,
+                        watermarkHelper = watermarkHelper
+                    )
                 }
             }
         ) {
-            Text("🖼️ 共 0 张照片", fontSize = 14.sp, color = Color(0xFF64748B))
+            val imageCount = cameraHelper.getImageFiles().size
+            Text("🖼️ 共 ${imageCount} 张照片", fontSize = 14.sp, color = Color(0xFF64748B))
+            if (imageCount > 0) {
+                Text("点击查看全部", fontSize = 12.sp, color = Color(0xFF94A3B8))
+            }
         }
     }
 }
 
-// --- 24. 预览 ---
+// --- 24. 水印相机全屏内容 ---
+@Composable
+fun WatermarkCameraFullscreenContent(
+    viewModel: LocationViewModel,
+    cameraHelper: CameraHelper,
+    watermarkHelper: WatermarkHelper,
+    cameraPermissionState: PermissionState,
+    storagePermissionState: PermissionState
+) {
+    val context = LocalContext.current
+    val currentLocation by viewModel.currentLocation.collectAsState()
+    val currentAttitude by viewModel.currentAttitude.collectAsState()
+    val locationName by viewModel.locationName.collectAsState()
+    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var capturedImagePath by remember { mutableStateOf<String?>(null) }
+    var watermarkedImagePath by remember { mutableStateOf<String?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
+    var showPreview by remember { mutableStateOf(false) }
+    var watermarkNote by remember { mutableStateOf("") }
+    var includeLocation by remember { mutableStateOf(true) }
+    var includeAttitude by remember { mutableStateOf(true) }
+    var includeTime by remember { mutableStateOf(true) }
+    var includeNote by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            capturedImagePath?.let { path ->
+                isProcessing = true
+                val resultPath = watermarkHelper.addWatermark(
+                    imagePath = path,
+                    locationName = if (includeLocation) locationName else "",
+                    latitude = currentLocation?.latitude ?: 0.0,
+                    longitude = currentLocation?.longitude ?: 0.0,
+                    altitude = currentLocation?.altitude ?: 0.0,
+                    dipDirection = currentAttitude?.dipDirection ?: 0f,
+                    dip = currentAttitude?.dip ?: 0f,
+                    strike = currentAttitude?.strike ?: 0f,
+                    note = if (includeNote) watermarkNote else ""
+                )
+                watermarkedImagePath = resultPath
+                isProcessing = false
+                showPreview = true
+            }
+        } else {
+            capturedImagePath = null
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("📷 水印相机", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+        Text("拍照自动添加水印", fontSize = 14.sp, color = Color(0xFF64748B))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("⚙️ 水印设置", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = includeLocation,
+                        onClick = { includeLocation = !includeLocation },
+                        label = { Text("📍 位置", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = includeAttitude,
+                        onClick = { includeAttitude = !includeAttitude },
+                        label = { Text("📐 产状", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = includeTime,
+                        onClick = { includeTime = !includeTime },
+                        label = { Text("🕐 时间", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = includeNote,
+                        onClick = { includeNote = !includeNote },
+                        label = { Text("📝 备注", fontSize = 11.sp) }
+                    )
+                }
+                if (includeNote) {
+                    OutlinedTextField(
+                        value = watermarkNote,
+                        onValueChange = { watermarkNote = it },
+                        label = { Text("备注内容") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF0EA5E9)
+                        )
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text("📍 当前位置", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (currentLocation != null) {
+                    Text("${String.format("%.6f", currentLocation!!.latitude)}°, ${String.format("%.6f", currentLocation!!.longitude)}°", fontSize = 12.sp)
+                    Text("海拔: ${String.format("%.1f", currentLocation!!.altitude)}m", fontSize = 12.sp)
+                } else {
+                    Text("等待GPS定位...", fontSize = 12.sp, color = Color.Gray)
+                }
+                if (currentAttitude != null) {
+                    Text("倾向: ${String.format("%.0f", currentAttitude!!.dipDirection)}° 倾角: ${String.format("%.0f", currentAttitude!!.dip)}°", fontSize = 12.sp)
+                }
+            }
+        }
+
+        Button(
+            onClick = {
+                if (cameraPermissionState.status.isGranted) {
+                    val file = cameraHelper.createImageFile()
+                    if (file != null) {
+                        capturedImagePath = file.absolutePath
+                        capturedImageUri = cameraHelper.getImageUri(file)
+                        capturedImageUri?.let { uri ->
+                            launcher.launch(uri)
+                        }
+                    }
+                } else {
+                    cameraPermissionState.launchPermissionRequest()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF0EA5E9)
+            ),
+            enabled = !isProcessing
+        ) {
+            Text(if (isProcessing) "⏳ 处理中..." else "📸 拍照", fontSize = 16.sp)
+        }
+
+        if (showPreview && watermarkedImagePath != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("✅ 水印添加成功", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF10B981))
+                    
+                    val bitmap = remember(watermarkedImagePath) {
+                        watermarkedImagePath?.let {
+                            BitmapFactory.decodeFile(it)
+                        }
+                    }
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "带水印的照片",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                showPreview = false
+                                watermarkedImagePath = null
+                                capturedImagePath = null
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF0EA5E9)
+                            )
+                        ) {
+                            Text("继续拍照", fontSize = 13.sp)
+                        }
+                        Button(
+                            onClick = {
+                                showPreview = false
+                                watermarkedImagePath = null
+                                capturedImagePath = null
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981)
+                            )
+                        ) {
+                            Text("完成", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "点击外部关闭",
+            fontSize = 11.sp,
+            color = Color(0xFF94A3B8),
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+}
+
+// --- 25. 相册全屏内容 ---
+@Composable
+fun GalleryFullscreenContent(
+    viewModel: LocationViewModel,
+    cameraHelper: CameraHelper,
+    watermarkHelper: WatermarkHelper
+) {
+    val context = LocalContext.current
+    var selectedImage by remember { mutableStateOf<File?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showDetail by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
+    val currentImages = remember(refreshTrigger) { cameraHelper.getImageFiles() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("🖼️ 相册", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+        Text("共 ${currentImages.size} 张照片", fontSize = 14.sp, color = Color(0xFF64748B))
+
+        if (currentImages.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxSize(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    Text("📭", fontSize = 48.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("暂无照片", fontSize = 16.sp, color = Color.Gray)
+                    Text("使用水印相机拍照", fontSize = 13.sp, color = Color(0xFF94A3B8))
+                }
+            }
+        } else {
+            val columns = 3
+            val chunkedImages = currentImages.chunked(columns)
+            
+            chunkedImages.forEach { rowImages ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowImages.forEach { file ->
+                        val bitmap = remember(file) {
+                            cameraHelper.decodeSampledBitmapFromFile(file.absolutePath, 200, 200)
+                        }
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clickable {
+                                    selectedImage = file
+                                    showDetail = true
+                                },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "照片",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("📷", fontSize = 24.sp)
+                                }
+                            }
+                        }
+                    }
+                    repeat(columns - rowImages.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            if (showDetail && selectedImage != null) {
+                Dialog(
+                    onDismissRequest = { showDetail = false },
+                    properties = DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = false
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.8f))
+                            .clickable { showDetail = false }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                                .clickable { /* 阻止点击穿透 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 500.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    val fullBitmap = remember(selectedImage) {
+                                        selectedImage?.let {
+                                            BitmapFactory.decodeFile(it.absolutePath)
+                                        }
+                                    }
+                                    if (fullBitmap != null) {
+                                        Image(
+                                            bitmap = fullBitmap.asImageBitmap(),
+                                            contentDescription = "照片",
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(300.dp),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    }
+                                    
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            "📷 ${selectedImage?.name ?: "未知"}",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            "📏 ${cameraHelper.getFileSize(selectedImage!!)}",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                        Text(
+                                            "🕐 ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(selectedImage!!.lastModified()))}",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    showDeleteDialog = true
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color(0xFFEF4444)
+                                                )
+                                            ) {
+                                                Text("🗑️ 删除", fontSize = 13.sp)
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    val uri = FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        selectedImage!!
+                                                    )
+                                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                        type = "image/jpeg"
+                                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    }
+                                                    context.startActivity(Intent.createChooser(shareIntent, "分享照片"))
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color(0xFF10B981)
+                                                )
+                                            ) {
+                                                Text("📤 分享", fontSize = 13.sp)
+                                            }
+                                        }
+                                        Button(
+                                            onClick = {
+                                                showDetail = false
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFF64748B)
+                                            )
+                                        ) {
+                                            Text("关闭", fontSize = 13.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (showDeleteDialog && selectedImage != null) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("确认删除") },
+                    text = { Text("确定要删除这张照片吗？") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                selectedImage?.let {
+                                    cameraHelper.deleteImageFile(it)
+                                    showDeleteDialog = false
+                                    showDetail = false
+                                    selectedImage = null
+                                    refreshTrigger++
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFEF4444)
+                            )
+                        ) {
+                            Text("删除")
+                        }
+                    },
+                    dismissButton = {
+                        Button(
+                            onClick = { showDeleteDialog = false }
+                        ) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "点击外部关闭",
+            fontSize = 11.sp,
+            color = Color(0xFF94A3B8),
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+    }
+}
+
+// --- 26. 预览 ---
 @Preview(showBackground = true)
 @Composable
 fun PreviewMainScreen() {

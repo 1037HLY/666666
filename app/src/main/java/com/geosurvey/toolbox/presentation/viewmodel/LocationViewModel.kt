@@ -113,6 +113,27 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // ============ 导出产状数据 ============
+    suspend fun exportAttitudeHistory(): String {
+        val history = attitudeHistory.value
+        if (history.isEmpty()) return ""
+        
+        return buildString {
+            append("序号,走向(°),倾角(°),倾向(°),纬度,经度,海拔(m),时间,备注\n")
+            history.forEachIndexed { index, data ->
+                append("${index + 1},")
+                append("${String.format("%.1f", data.strike)},")
+                append("${String.format("%.1f", data.dip)},")
+                append("${String.format("%.1f", data.dipDirection)},")
+                append("${String.format("%.6f", data.latitude)},")
+                append("${String.format("%.6f", data.longitude)},")
+                append("${String.format("%.1f", data.altitude)},")
+                append("${android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", data.time)},")
+                append("${data.note}\n")
+            }
+        }
+    }
+
     // ============ 清理 ============
     override fun onCleared() {
         super.onCleared()
